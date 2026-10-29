@@ -148,6 +148,16 @@ func (p *erdeParser) throw(line int, format string, args ...interface{}) {
 	})
 }
 
+// throwEOF throws an error for input that ends early. These are reported at
+// line `EOF` (same as the Lua parser), so callers can tell incomplete input
+// apart from invalid input (ex. to continue reading lines in a REPL).
+func (p *erdeParser) throwEOF(format string, args ...interface{}) {
+	panic(&Error{
+		Pos:     ast.Position{Source: p.source, Line: EOF},
+		Message: fmt.Sprintf(format, args...),
+	})
+}
+
 func (p *erdeParser) consume() string {
 	value := p.cur.Value
 	p.index++
@@ -177,7 +187,7 @@ func (p *erdeParser) branch(value string) bool {
 
 func (p *erdeParser) expect(value string) {
 	if p.cur.Type == erdeEOF {
-		p.throw(p.cur.Line, "unexpected eof (expected %s)", value)
+		p.throwEOF("unexpected eof (expected %s)", value)
 	}
 	if !p.is(value) {
 		p.throw(p.cur.Line, "expected '%s' got '%s'", value, p.cur.Value)
@@ -221,7 +231,7 @@ func (p *erdeParser) lookPastSurround(start int) (erdeToken, int) {
 	for depth > 0 {
 		token := p.tokens[i]
 		if token.Type == erdeEOF {
-			p.throw(open.Line, "unexpected eof, missing '%s'", close)
+			p.throwEOF("unexpected eof, missing '%s'", close)
 		}
 		if isErdeSyntax(token, open.Value) {
 			depth++
@@ -282,6 +292,12 @@ func erdeLine[T ast.PositionHolder](node T, line int) T {
 	node.SetLine(line)
 	node.SetLastLine(line)
 	return node
+}
+
+// closed sets the last line of a block statement to the closing brace.
+func (p *erdeParser) closed(stmt ast.Stmt) ast.Stmt {
+	stmt.SetLastLine(p.prevLine())
+	return stmt
 }
 
 func erdeIdent(name string, line int) *ast.IdentExpr {
@@ -359,7 +375,7 @@ func (p *erdeParser) binop(op string, line int, lhs, rhs ast.Expr) ast.Expr {
 func (p *erdeParser) name() string {
 	switch {
 	case p.cur.Type == erdeEOF:
-		p.throw(p.cur.Line, "unexpected eof")
+		p.throwEOF("unexpected eof")
 	case p.cur.Type != erdeWord:
 		p.throw(p.cur.Line, "unexpected token '%s'", p.cur.Value)
 	case erdeKeywords[p.cur.Value]:
@@ -714,7 +730,7 @@ func (p *erdeParser) arrowFunction() ast.Expr {
 	case p.branch("=>"):
 		parList.Names = append([]string{"self"}, parList.Names...)
 	case p.cur.Type == erdeEOF:
-		p.throw(p.cur.Line, "unexpected eof (expected '->' or '=>')")
+		p.throwEOF("unexpected eof (expected '->' or '=>')")
 	default:
 		p.throw(p.cur.Line, "unexpected token '%s' (expected '->' or '=>')", p.cur.Value)
 	}
@@ -813,7 +829,7 @@ func (p *erdeParser) terminalExpression() ast.Expr {
 
 	switch p.cur.Type {
 	case erdeEOF:
-		p.throw(line, "unexpected eof (expected expression)")
+		p.throwEOF("unexpected eof (expected expression)")
 	case erdeNumber:
 		return erdeLine(&ast.NumberExpr{Value: p.consume()}, line)
 	case erdeSingleQuote, erdeDoubleQuote, erdeBlockString:
@@ -895,7 +911,7 @@ func (p *erdeParser) unopExpression() ast.Expr {
 
 func (p *erdeParser) expression(minPrec int) ast.Expr {
 	if p.cur.Type == erdeEOF {
-		p.throw(p.cur.Line, "unexpected eof (expected expression)")
+		p.throwEOF("unexpected eof (expected expression)")
 	}
 
 	var expr ast.Expr
@@ -992,7 +1008,7 @@ func (p *erdeParser) forLoop() ast.Stmt {
 		if len(exprs) == 3 {
 			stmt.Step = exprs[2]
 		}
-		return erdeLine(stmt, line)
+		return p.closed(erdeLine(stmt, line))
 	}
 
 	names := []string{}
@@ -1023,7 +1039,7 @@ func (p *erdeParser) forLoop() ast.Stmt {
 	stmts := append(prelude, p.loopBlock()...)
 	p.popScope()
 
-	return erdeLine(&ast.GenericForStmt{Names: names, Exprs: exprs, Stmts: stmts}, line)
+	return p.closed(erdeLine(&ast.GenericForStmt{Names: names, Exprs: exprs, Stmts: stmts}, line))
 }
 
 func (p *erdeParser) ifElse() ast.Stmt {
@@ -1048,7 +1064,7 @@ func (p *erdeParser) ifElse() ast.Stmt {
 		last.Else = p.braceBlock()
 	}
 
-	return root
+	return p.closed(root)
 }
 
 /* }}} */
@@ -1060,7 +1076,7 @@ func (p *erdeParser) assignmentChain() *erdeChain {
 		chain := p.indexChain(p.parenthesizedExpression())
 		if chain.chainLen == 0 {
 			if p.cur.Type == erdeEOF {
-				p.throw(p.cur.Line, "unexpected eof")
+				p.throwEOF("unexpected eof")
 			}
 			p.throw(p.cur.Line, "unexpected token '%s'", p.cur.Value)
 		}
@@ -1234,7 +1250,7 @@ func (p *erdeParser) statement() []ast.Stmt {
 
 	switch {
 	case p.cur.Type == erdeEOF:
-		p.throw(line, "unexpected eof")
+		p.throwEOF("unexpected eof")
 	case p.is("break"):
 		p.consume()
 		if p.loop == nil {
@@ -1258,7 +1274,7 @@ func (p *erdeParser) statement() []ast.Stmt {
 		stmts = []ast.Stmt{erdeLine(&ast.LabelStmt{Name: label}, line)}
 	case p.is("do"):
 		p.consume()
-		stmts = []ast.Stmt{erdeLine(&ast.DoBlockStmt{Stmts: p.braceBlock()}, line)}
+		stmts = []ast.Stmt{p.closed(erdeLine(&ast.DoBlockStmt{Stmts: p.braceBlock()}, line))}
 	case p.is("if"):
 		stmts = []ast.Stmt{p.ifElse()}
 	case p.is("for"):
@@ -1266,7 +1282,7 @@ func (p *erdeParser) statement() []ast.Stmt {
 	case p.is("while"):
 		p.consume()
 		condition := p.expression(1)
-		stmts = []ast.Stmt{erdeLine(&ast.WhileStmt{Condition: condition, Stmts: p.loopBlock()}, line)}
+		stmts = []ast.Stmt{p.closed(erdeLine(&ast.WhileStmt{Condition: condition, Stmts: p.loopBlock()}, line))}
 	case p.is("repeat"):
 		p.consume()
 		body := p.loopBlock()

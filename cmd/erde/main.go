@@ -1,13 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
-	"github.com/chzyer/readline"
-	"github.com/taybart/go-erde"
-	"github.com/taybart/go-erde/parse"
+	"io"
 	"os"
 	"runtime/pprof"
+	"strings"
+
+	"github.com/chzyer/readline"
+	"github.com/taybart/go-erde"
+	"github.com/taybart/go-erde/ast"
+	"github.com/taybart/go-erde/luagen"
+	"github.com/taybart/go-erde/parse"
 )
 
 func main() {
@@ -15,30 +21,40 @@ func main() {
 }
 
 func mainAux() int {
-	var opt_e, opt_l, opt_p string
-	var opt_i, opt_v, opt_dt, opt_dc bool
+	var opt_e, opt_l, opt_p, opt_lang string
+	var opt_i, opt_v, opt_dt, opt_dc, opt_c bool
 	var opt_m int
 	flag.StringVar(&opt_e, "e", "", "")
 	flag.StringVar(&opt_l, "l", "", "")
 	flag.StringVar(&opt_p, "p", "", "")
+	flag.StringVar(&opt_lang, "lang", "", "")
 	flag.IntVar(&opt_m, "mx", 0, "")
 	flag.BoolVar(&opt_i, "i", false, "")
 	flag.BoolVar(&opt_v, "v", false, "")
 	flag.BoolVar(&opt_dt, "dt", false, "")
 	flag.BoolVar(&opt_dc, "dc", false, "")
+	flag.BoolVar(&opt_c, "c", false, "")
 	flag.Usage = func() {
-		fmt.Println(`Usage: glua [options] [script [args]].
+		fmt.Println(`Usage: erde [options] [script [args]].
 Available options are:
   -e stat  execute string 'stat'
+  -lang l  source language, 'erde' or 'lua' (default: 'lua' for *.lua
+           scripts, otherwise 'erde')
   -l name  require library 'name'
   -mx MB   memory limit(default: unlimited)
   -dt      dump AST trees
   -dc      dump VM codes
+  -c       print 'script' compiled to Lua (without running it)
   -i       enter interactive mode after executing 'script'
   -p file  write cpu profiles to the file
-  -v       show version information`)
+  -v       show version information
+A script of '-' is read from stdin.`)
 	}
 	flag.Parse()
+	if opt_lang != "" && opt_lang != "erde" && opt_lang != "lua" {
+		fmt.Printf("invalid -lang '%s' (expected 'erde' or 'lua')\n", opt_lang)
+		return 1
+	}
 	if len(opt_p) != 0 {
 		f, err := os.Create(opt_p)
 		if err != nil {
@@ -77,13 +93,23 @@ Available options are:
 			L.RawSet(argtb, lua.LNumber(i), lua.LString(flag.Arg(i)))
 		}
 		L.SetGlobal("arg", argtb)
-		if opt_dt || opt_dc {
-			file, err := os.Open(script)
+		source, err := readScript(script)
+		if err != nil {
+			fmt.Println(err.Error())
+			return 1
+		}
+		isErde := opt_lang == "erde" || opt_lang == "" && !strings.HasSuffix(script, ".lua")
+		if opt_c {
+			chunk, err := parseSource(source, script, isErde)
 			if err != nil {
 				fmt.Println(err.Error())
 				return 1
 			}
-			chunk, err2 := parse.Parse(file, script)
+			fmt.Print(luagen.Generate(chunk))
+			return 0
+		}
+		if opt_dt || opt_dc {
+			chunk, err2 := parseSource(source, script, isErde)
 			if err2 != nil {
 				fmt.Println(err2.Error())
 				return 1
@@ -100,42 +126,102 @@ Available options are:
 				fmt.Println(proto.String())
 			}
 		}
-		if err := L.DoFile(script); err != nil {
+		if err := doSource(L, source, script, isErde); err != nil {
 			fmt.Println(err.Error())
 			status = 1
 		}
 	}
 
 	if len(opt_e) > 0 {
-		if err := L.DoString(opt_e); err != nil {
+		if err := doSource(L, []byte(opt_e), "<string>", opt_lang != "lua"); err != nil {
 			fmt.Println(err.Error())
 			status = 1
 		}
 	}
 
 	if opt_i {
-		doREPL(L)
+		doREPL(L, opt_lang != "lua")
 	}
 	return status
 }
 
+// readScript reads a script ('-' for stdin). Works for pipes / process
+// substitution (ex. `erde <(cat script.erde)`), which have no file extension.
+func readScript(path string) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(os.Stdin)
+	}
+	return os.ReadFile(path)
+}
+
+func parseSource(source []byte, name string, isErde bool) ([]ast.Stmt, error) {
+	if isErde {
+		return parse.ParseErde(bytes.NewReader(source), name)
+	}
+	if bytes.HasPrefix(source, []byte("#")) {
+		// Skip the shebang line, but keep the newline so line numbers match.
+		if i := bytes.IndexByte(source, '\n'); i >= 0 {
+			source = source[i:]
+		} else {
+			source = nil
+		}
+	}
+	return parse.Parse(bytes.NewReader(source), name)
+}
+
+func doSource(L *lua.LState, source []byte, name string, isErde bool) error {
+	chunk, err := parseSource(source, name, isErde)
+	if err != nil {
+		return err
+	}
+	proto, err := lua.Compile(chunk, name)
+	if err != nil {
+		return err
+	}
+	L.Push(L.NewFunctionFromProto(proto))
+	return L.PCall(0, lua.MultRet, nil)
+}
+
 // do read/eval/print/loop
-func doREPL(L *lua.LState) {
+func doREPL(L *lua.LState, isErde bool) {
 	rl, err := readline.New("> ")
 	if err != nil {
 		panic(err)
 	}
 	defer rl.Close()
 	for {
-		if str, err := loadline(rl, L); err == nil {
-			if err := L.DoString(str); err != nil {
-				fmt.Println(err)
-			}
-		} else { // error on loadline
-			fmt.Println(err)
+		fn, err := loadline(rl, L, isErde)
+		if err == io.EOF || err == readline.ErrInterrupt {
 			return
+		} else if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		top := L.GetTop()
+		L.Push(fn)
+		if err := L.PCall(0, lua.MultRet, nil); err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		// print returned values (ex. from `1 + 1`)
+		if L.GetTop() > top {
+			results := make([]string, 0, L.GetTop()-top)
+			for i := top + 1; i <= L.GetTop(); i++ {
+				results = append(results, L.ToStringMeta(L.Get(i)).String())
+			}
+			fmt.Println(strings.Join(results, "\t"))
+			L.SetTop(top)
 		}
 	}
+}
+
+func loadString(L *lua.LState, source string, isErde bool) (*lua.LFunction, error) {
+	if isErde {
+		return L.LoadErdeString(source)
+	}
+	return L.LoadString(source)
 }
 
 func incomplete(err error) bool {
@@ -147,32 +233,30 @@ func incomplete(err error) bool {
 	return false
 }
 
-func loadline(rl *readline.Instance, L *lua.LState) (string, error) {
+// loadline reads a chunk, prompting for more lines while it is incomplete.
+// Expressions are evaluated as `return <expression>` so their values print.
+func loadline(rl *readline.Instance, L *lua.LState, isErde bool) (*lua.LFunction, error) {
 	rl.SetPrompt("> ")
-	if line, err := rl.Readline(); err == nil {
-		if _, err := L.LoadString("return " + line); err == nil { // try add return <...> then compile
-			return line, nil
-		} else {
-			return multiline(line, rl, L)
-		}
-	} else {
-		return "", err
+	chunk, err := rl.Readline()
+	if err != nil {
+		return nil, err
 	}
-}
 
-func multiline(ml string, rl *readline.Instance, L *lua.LState) (string, error) {
 	for {
-		if _, err := L.LoadString(ml); err == nil { // try compile
-			return ml, nil
-		} else if !incomplete(err) { // syntax error , but not EOF
-			return ml, nil
-		} else {
-			rl.SetPrompt(">> ")
-			if line, err := rl.Readline(); err == nil {
-				ml = ml + "\n" + line
-			} else {
-				return "", err
-			}
+		if fn, err := loadString(L, "return "+chunk, isErde); err == nil {
+			return fn, nil
 		}
+
+		fn, err := loadString(L, chunk, isErde)
+		if !incomplete(err) {
+			return fn, err
+		}
+
+		rl.SetPrompt(">> ")
+		line, err := rl.Readline()
+		if err != nil {
+			return nil, err
+		}
+		chunk += "\n" + line
 	}
 }

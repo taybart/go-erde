@@ -56,6 +56,14 @@ func (lx *erdeLexer) throw(line int, format string, args ...interface{}) {
 	})
 }
 
+// throwEOF throws an error for input that ends early (see erdeParser.throwEOF).
+func (lx *erdeLexer) throwEOF(format string, args ...interface{}) {
+	panic(&Error{
+		Pos:     ast.Position{Source: lx.source, Line: EOF},
+		Message: fmt.Sprintf(format, args...),
+	})
+}
+
 func (lx *erdeLexer) peek(n int) byte {
 	if lx.pos+n < len(lx.text) {
 		return lx.text[lx.pos+n]
@@ -267,11 +275,10 @@ func (lx *erdeLexer) comment() {
 		if lx.peek(1+equals) == '[' {
 			lx.pos += 2 + equals
 			closeQuote := "]" + strings.Repeat("=", equals) + "]"
-			commentLine := lx.line
 
 			for !strings.HasPrefix(lx.text[lx.pos:], closeQuote) {
 				if lx.eof() {
-					lx.throw(commentLine, "unterminated comment")
+					lx.throwEOF("unterminated comment")
 				}
 				if lx.text[lx.pos] == '\n' {
 					lx.line++
@@ -469,7 +476,6 @@ func (lx *erdeLexer) blockString() {
 	}
 
 	var content bytes.Buffer
-	blockStringLine := lx.line
 	contentLine := lx.line
 
 	flush := func() {
@@ -483,7 +489,7 @@ func (lx *erdeLexer) blockString() {
 	for !strings.HasPrefix(lx.text[lx.pos:], closeQuote) {
 		switch c := lx.peek(0); {
 		case lx.eof():
-			lx.throw(blockStringLine, "unterminated block string")
+			lx.throwEOF("unterminated block string")
 		case c == '\n':
 			content.WriteByte(c)
 			lx.pos++
@@ -515,13 +521,12 @@ func (lx *erdeLexer) interpolation() {
 	lx.emit(erdeInterpolation, "{", lx.line)
 	lx.pos++
 
-	interpolationLine := lx.line
 	braceDepth := 0
 
 	for lx.peek(0) != '}' || braceDepth > 0 {
 		switch {
 		case lx.eof():
-			lx.throw(interpolationLine, "unterminated interpolation")
+			lx.throwEOF("unterminated interpolation")
 		case lx.peek(0) == '{':
 			braceDepth++
 			lx.emit(erdeSymbol, "{", lx.line)
