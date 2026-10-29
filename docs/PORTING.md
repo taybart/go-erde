@@ -29,7 +29,8 @@ Compared to upstream gopher-lua:
 | | `parse/erde_options.go` | experimental extensions (ex. `match`), off by default |
 | | `bit32lib.go` | Lua 5.2's `bit32` (gopher-lua is Lua 5.1, which has no bit operators) |
 | | `luagen/` | AST -> Lua source (optional, see [strategy B](#b-source-to-source)) |
-| | `cmd/erde/` | CLI (from gopher-lua's `glua`) |
+| | `cmd/erde/` | CLI (from gopher-lua's `glua`), plus `compile` / `clean` / `lint` / `fmt` (see [TOOLS.md](TOOLS.md)) |
+| | `lint/`, `format/` | linter (on the AST) and formatter (on raw tokens, from `parse.ErdeRawTokens`) |
 | | `erde_spec_test.go`, `testdata/erde-spec/`, `_tools/erde-spec/` | differential tests against the reference compiler |
 
 To check this still holds:

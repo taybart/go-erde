@@ -41,63 +41,9 @@ cat script.erde | erde - # stdin (also works w/ `erde <(...)`)
 Scripts that don't end in `.lua` are treated as Erde (use `-lang lua` or
 `-lang erde` to override). See `erde -h` for all options.
 
-`erde compile` works like the reference compiler's: compiled files end w/ a
-`-- __ERDE_COMPILED__` footer, and existing `.lua` files without it are never
-overwritten (unless `-f`). `-p` prints instead of writing files. `erde clean`
-only removes files w/ the footer. See `erde compile -h` / `erde clean -h`.
-
-### Formatting
-
-`erde fmt [paths]` formats files in place, `-` formats stdin to stdout, and
-`-check` lists unformatted files and exits 1 (for CI / git hooks). It keeps
-your line breaks (one line blocks stay on one line, long lines aren't wrapped)
-and normalizes:
-
-- indentation (2 spaces), spacing, and blank lines (at most one in a row)
-- trailing commas (added to multiline tables, removed from single line ones)
-- quotes (`"abc"` becomes `'abc'` unless that needs escapes, or has
-  interpolation)
-- line comments (`--x` becomes `-- x`)
-
-Every result is checked to parse to the same program as the input, so a
-formatter bug is reported as an error instead of changing your code.
-
-Neovim (w/ [conform.nvim](https://github.com/stevearc/conform.nvim)):
-
-```lua
-formatters = {
-  erde_fmt = { command = 'erde', args = { 'fmt', '-X', 'match', '-' }, stdin = true },
-},
-formatters_by_ft = { erde = { 'erde_fmt' } },
-```
-
-### Linting
-
-`erde lint [paths]` reports undefined / undeclared globals, unused locals,
-shadowing, redefinitions, unreachable code, and syntax errors, as
-`path:line: message (rule)`, and exits 1 if there are any (so it works as is in
-CI or a git hook). `-` reads stdin, `-g a,b` adds globals provided by the host,
-`-X` enables experiments, and a comment containing `erde-lint: ignore` silences
-its line. See `erde lint -h` for the rules.
-
-It runs on the AST (the `lint` package), so it also checks Lua files and
-never reports names made up by the Erde parser.
-
-Neovim (w/ [nvim-lint](https://github.com/mfussenegger/nvim-lint)):
-
-```lua
-require('lint').linters.erde = {
-  cmd = 'erde',
-  args = { 'lint', '-' },
-  stdin = true,
-  ignore_exitcode = true,
-  parser = require('lint.parser').from_pattern(
-    '^[^:]+:(%d+): (.+) %((.+)%)$', { 'lnum', 'message', 'code' },
-    nil, { source = 'erde lint', severity = vim.diagnostic.severity.WARN }
-  ),
-}
-require('lint').linters_by_ft.erde = { 'erde' }
-```
+See [docs/TOOLS.md](docs/TOOLS.md) for `compile`, `clean`, `lint`, and `fmt`:
+what they do, their rules, and their output formats / exit codes (for editor
+integrations and CI).
 
 ## Experimental extensions
 
