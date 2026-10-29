@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/yuin/gopher-lua/ast"
+	"github.com/taybart/go-erde/ast"
 )
 
 // Erde (https://erde-lang.github.io/) tokenizer. Mirrors erde/tokenize.erde:

@@ -42,7 +42,7 @@ There are some benchmarks on the [wiki page](https://github.com/yuin/gopher-lua/
 ## Installation
 
 ```bash
-$ go get github.com/yuin/gopher-lua
+$ go get github.com/taybart/go-erde
 ```
 
 ## Usage
@@ -56,7 +56,7 @@ Import a package.
 
 ```go
 import (
-    "github.com/yuin/gopher-lua"
+    "github.com/taybart/go-erde"
 )
 ```
 
@@ -78,9 +78,9 @@ if err := L.DoFile("hello.lua"); err != nil {
 }
 ```
 
-Refer to [Lua Reference Manual](http://www.lua.org/manual/5.1/) and [Go doc](http://godoc.org/github.com/yuin/gopher-lua) for further information.
+Refer to [Lua Reference Manual](http://www.lua.org/manual/5.1/) and [Go doc](http://pkg.go.dev/github.com/taybart/go-erde) for further information.
 
-Note that elements that are not commented in [Go doc](http://godoc.org/github.com/yuin/gopher-lua) equivalent to [Lua Reference Manual](http://www.lua.org/manual/5.1/) , except GopherLua uses objects instead of Lua stack indices.
+Note that elements that are not commented in [Go doc](http://pkg.go.dev/github.com/taybart/go-erde) equivalent to [Lua Reference Manual](http://www.lua.org/manual/5.1/) , except GopherLua uses objects instead of Lua stack indices.
 
 ### Data model
 
@@ -216,7 +216,7 @@ An `LState` object that has been created by `*LState#NewThread()` inherits the c
 
 ### API
 
-Refer to [Lua Reference Manual](http://www.lua.org/manual/5.1/) and [Go doc(LState methods)](http://godoc.org/github.com/yuin/gopher-lua) for further information.
+Refer to [Lua Reference Manual](http://www.lua.org/manual/5.1/) and [Go doc(LState methods)](http://pkg.go.dev/github.com/taybart/go-erde) for further information.
 
 #### Calling Go from Lua
 
@@ -308,7 +308,7 @@ mymodule.go
 package mymodule
 
 import (
-    "github.com/yuin/gopher-lua"
+    "github.com/taybart/go-erde"
 )
 
 func Loader(L *lua.LState) int {
@@ -338,7 +338,7 @@ package main
 
 import (
     "./mymodule"
-    "github.com/yuin/gopher-lua"
+    "github.com/taybart/go-erde"
 )
 
 func main() {
@@ -638,7 +638,7 @@ func main() {
 
 `ToChannel`, `CheckChannel`, `OptChannel` are available.
 
-Refer to [Go doc(LState methods)](http://godoc.org/github.com/yuin/gopher-lua) for further information.
+Refer to [Go doc(LState methods)](http://pkg.go.dev/github.com/taybart/go-erde) for further information.
 
 ##### Lua API
 
@@ -784,7 +784,7 @@ func main() {
 Lua has an interpreter called `lua` . GopherLua has an interpreter called `glua` .
 
 ```bash
-go get github.com/yuin/gopher-lua/cmd/glua
+go get github.com/taybart/go-erde/cmd/glua
 ```
 
 `glua` has same options as `lua` .

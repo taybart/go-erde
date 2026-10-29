@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yuin/gopher-lua/parse"
+	"github.com/taybart/go-erde/parse"
 )
 
 const maxMemory = 40

@@ -5,7 +5,7 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/yuin/gopher-lua/ast"
+	"github.com/taybart/go-erde/ast"
 )
 
 // Erde (https://erde-lang.github.io/) parser. Erde is a Lua dialect, so instead

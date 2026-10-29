@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/yuin/gopher-lua/parse"
+	"github.com/taybart/go-erde/parse"
 )
 
 /* checkType {{{ */

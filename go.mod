@@ -1,4 +1,4 @@
-module github.com/yuin/gopher-lua
+module github.com/taybart/go-erde
 
 go 1.23
 
