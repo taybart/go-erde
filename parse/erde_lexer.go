@@ -47,6 +47,34 @@ type erdeLexer struct {
 	pos    int
 	line   int
 	tokens []erdeToken
+
+	// Raw tokens (for tooling, see ErdeRawTokens), or nil when not needed.
+	raw *[]ErdeRawToken
+	// > 0 while lexing a raw token (ex. inside a string's interpolation, which
+	// is part of the string's raw token).
+	rawDepth int
+}
+
+// ErdeRawKind is the kind of an ErdeRawToken.
+type ErdeRawKind int
+
+const (
+	RawWord ErdeRawKind = iota
+	RawNumber
+	RawSymbol
+	RawString  // whole string literal, including interpolations
+	RawComment // also a leading `#!` line
+)
+
+// ErdeRawToken is a token as written in the source (ex. for formatters).
+type ErdeRawToken struct {
+	Kind ErdeRawKind
+	Text string
+	// Byte offsets of the token in the source.
+	Start, End int
+	// Lines the token starts and ends on (they differ for multiline strings
+	// and comments).
+	Line, EndLine int
 }
 
 func (lx *erdeLexer) throw(line int, format string, args ...interface{}) {
@@ -89,8 +117,22 @@ func isErdeHex(c byte) bool {
 	return isErdeDigit(c) || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 }
 
-func erdeTokenize(text, source string) (tokens []erdeToken, err error) {
-	lx := &erdeLexer{source: source, text: text, line: 1}
+func erdeTokenize(text, source string) ([]erdeToken, error) {
+	return erdeLex(&erdeLexer{source: source, text: text, line: 1})
+}
+
+// ErdeRawTokens splits Erde source into tokens as written, including
+// comments. Strings (including any interpolations) are a single token.
+func ErdeRawTokens(text, source string) ([]ErdeRawToken, error) {
+	raw := []ErdeRawToken{}
+	if _, err := erdeLex(&erdeLexer{source: source, text: text, line: 1, raw: &raw}); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func erdeLex(lx *erdeLexer) (tokens []erdeToken, err error) {
+	text := lx.text
 
 	defer func() {
 		if e := recover(); e != nil {
@@ -106,6 +148,9 @@ func erdeTokenize(text, source string) (tokens []erdeToken, err error) {
 		for !lx.eof() && lx.text[lx.pos] != '\n' {
 			lx.pos++
 		}
+		if lx.raw != nil {
+			*lx.raw = append(*lx.raw, ErdeRawToken{Kind: RawComment, Text: text[:lx.pos], End: lx.pos, Line: 1, EndLine: 1})
+		}
 	}
 
 	for !lx.eof() {
@@ -117,6 +162,15 @@ func erdeTokenize(text, source string) (tokens []erdeToken, err error) {
 }
 
 func (lx *erdeLexer) token() {
+	if lx.raw != nil && lx.rawDepth == 0 {
+		start, line := lx.pos, lx.line
+		lx.rawDepth++
+		defer func() {
+			lx.rawDepth--
+			lx.recordRaw(start, line)
+		}()
+	}
+
 	c := lx.text[lx.pos]
 
 	switch {
@@ -156,6 +210,27 @@ func (lx *erdeLexer) token() {
 		lx.emit(erdeSymbol, string(c), lx.line)
 		lx.pos++
 	}
+}
+
+func (lx *erdeLexer) recordRaw(start, line int) {
+	text := lx.text[start:lx.pos]
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+
+	kind := RawSymbol
+	switch c := text[0]; {
+	case isErdeWordHead(c):
+		kind = RawWord
+	case isErdeDigit(c) || c == '.' && len(text) > 1 && isErdeDigit(text[1]):
+		kind = RawNumber
+	case c == '\'' || c == '"' || c == '[' && len(text) > 1 && (text[1] == '[' || text[1] == '='):
+		kind = RawString
+	case strings.HasPrefix(text, "--"):
+		kind = RawComment
+	}
+
+	*lx.raw = append(*lx.raw, ErdeRawToken{Kind: kind, Text: text, Start: start, End: lx.pos, Line: line, EndLine: lx.line})
 }
 
 func (lx *erdeLexer) decimal() {

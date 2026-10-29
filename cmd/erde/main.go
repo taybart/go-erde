@@ -27,6 +27,10 @@ func mainAux() int {
 			return compileCommand(os.Args[2:])
 		case "clean":
 			return cleanCommand(os.Args[2:])
+		case "lint":
+			return lintCommand(os.Args[2:])
+		case "fmt":
+			return fmtCommand(os.Args[2:])
 		}
 	}
 
@@ -48,6 +52,8 @@ func mainAux() int {
 		fmt.Println(`Usage: erde [options] [script [args]].
        erde compile [options] [paths]  (see 'erde compile -h')
        erde clean [paths]              (see 'erde clean -h')
+       erde lint [options] [paths]     (see 'erde lint -h')
+       erde fmt [options] [paths]      (see 'erde fmt -h')
 Available options are:
   -e stat  execute string 'stat'
   -lang l  source language, 'erde' or 'lua' (default: 'lua' for *.lua
