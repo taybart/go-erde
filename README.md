@@ -28,6 +28,8 @@ go install github.com/taybart/go-erde/cmd/erde@latest # CLI
 ```sh
 erde script.erde         # run a script (*.lua scripts run as Lua)
 erde -c script.erde      # print the script compiled to Lua
+erde compile .           # compile all *.erde files under . (foo.erde -> foo.lua)
+erde compile src -o out  # ... into out/
 erde -e 'print("{1 + 1}")'
 erde                     # REPL
 cat script.erde | erde - # stdin (also works w/ `erde <(...)`)
@@ -35,6 +37,11 @@ cat script.erde | erde - # stdin (also works w/ `erde <(...)`)
 
 Scripts that don't end in `.lua` are treated as Erde (use `-lang lua` or
 `-lang erde` to override). See `erde -h` for all options.
+
+`erde compile` works like the reference compiler's: compiled files end w/ a
+`-- __ERDE_COMPILED__` footer, and existing `.lua` files without it are never
+overwritten (unless `-f`). `-p` prints instead of writing files. See
+`erde compile -h`.
 
 ## Experimental extensions
 

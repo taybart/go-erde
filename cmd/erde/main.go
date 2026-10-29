@@ -21,6 +21,10 @@ func main() {
 }
 
 func mainAux() int {
+	if len(os.Args) > 1 && os.Args[1] == "compile" {
+		return compileCommand(os.Args[2:])
+	}
+
 	var opt_e, opt_l, opt_p, opt_lang, opt_x string
 	var opt_i, opt_v, opt_dt, opt_dc, opt_c bool
 	var opt_m int
@@ -37,6 +41,7 @@ func mainAux() int {
 	flag.BoolVar(&opt_c, "c", false, "")
 	flag.Usage = func() {
 		fmt.Println(`Usage: erde [options] [script [args]].
+       erde compile [options] [paths]  (see 'erde compile -h')
 Available options are:
   -e stat  execute string 'stat'
   -lang l  source language, 'erde' or 'lua' (default: 'lua' for *.lua
