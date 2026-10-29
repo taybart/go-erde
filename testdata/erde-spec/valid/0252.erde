@@ -1,0 +1,12 @@
+    local function a() {
+      return 1
+    }
+
+    do {
+      function a() {
+        return 2
+      }
+    }
+
+    return _G.a
+  

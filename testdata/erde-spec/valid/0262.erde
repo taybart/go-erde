@@ -1,0 +1,4 @@
+    local a = { b = 3 }
+    function a:end() { return self.b }
+    return a:end()
+  

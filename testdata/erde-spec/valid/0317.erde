@@ -1,0 +1,9 @@
+    local a = 2
+
+    while true {
+      if true { break }
+      a += 1
+    }
+
+    return a
+  

@@ -1,0 +1,4 @@
+    local a = { b = () => self }
+    a:b().c = 2
+    return a.c
+  

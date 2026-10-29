@@ -1,0 +1,3 @@
+    local end = { a = 3 }
+    return end.a
+  

@@ -1,0 +1,4 @@
+    local a = { end = 3 }
+    local key = 'end'
+    return a[key]
+  

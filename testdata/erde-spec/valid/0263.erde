@@ -1,0 +1,5 @@
+    global function a() {}
+    local result = type(_G.a)
+    _G.a = nil
+    return result
+  

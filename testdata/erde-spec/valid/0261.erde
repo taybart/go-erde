@@ -1,0 +1,4 @@
+    local a = {}
+    function a.end() { return 2 }
+    return a.end()
+  

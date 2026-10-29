@@ -1,0 +1,4 @@
+    local a = 2
+    do { local a = 0 }
+    return a
+  

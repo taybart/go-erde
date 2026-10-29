@@ -1,49 +1,46 @@
-# How to Contribute
-Any kind of contributions are welcome.
+# Contributing
 
-## Building GopherLua
+## Layout
 
-GopherLua uses simple inlining tool for generate efficient codes. This tool requires python interpreter. Files name of which starts with `_` genarate files name of which does not starts with `_` . For instance, `_state.go` generate `state.go` . You do not edit generated sources.
-To generate sources, some make target is available.
+| Path | What |
+| --- | --- |
+| `parse/erde_lexer.go`, `parse/erde_parser.go` | Erde parser (Erde -> AST) |
+| `luagen/` | Lua code generator (AST -> Lua) |
+| `erde.go`, `bit32lib.go` | Erde Go API, `bit32` library |
+| `cmd/erde/` | CLI |
+| everything else | gopher-lua (Lua parser, compiler, VM, standard libraries) |
 
-```bash
-make build
-make glua
+## Keeping in sync w/ gopher-lua
+
+go-erde should stay mergeable w/ upstream gopher-lua, so:
+
+- Don't change the compiler or VM. Erde features are lowered to the existing AST
+  in the parser (see [docs/PORTING.md](../docs/PORTING.md)).
+- Put Erde additions in new files. When an upstream file has to change, keep the
+  change small and mark it w/ a `go-erde` comment.
+
+To merge upstream changes:
+
+```sh
+git remote add upstream https://github.com/yuin/gopher-lua.git
+git fetch upstream
+git merge upstream/master
+# conflicts should only be import paths (github.com/yuin/gopher-lua -> github.com/taybart/go-erde)
+```
+
+## Building
+
+Files starting w/ `_` generate the file of the same name without it (ex.
+`_state.go` -> `state.go`) via a small inlining tool (requires python). Don't
+edit the generated files directly.
+
+```sh
+make build # regenerate + build
+make erde  # build the CLI
 make test
 ```
 
-You have to run `make build` before committing to the repository.
+## Testing
 
-## Pull requests
-Our workflow is based on the [github-flow](https://guides.github.com/introduction/flow/>) .
-
-1. Create a new issue.
-2. Fork the project.
-3. Clone your fork and add the upstream.
-    ```bash
-    git remote add upstream https://github.com/yuin/gopher-lua.git
-    ```
-
-4. Pull new changes from the upstream.
-    ```bash
-    git checkout master
-    git fetch upstream
-    git merge upstream/master
-    ```
-
-5. Create a feature branch
-    ```bash
-    git checkout -b <branch-name>
-    ```
-
-6. Commit your changes and reference the issue number in your comment.
-    ```bash
-    git commit -m "Issue #<issue-ref> : <your message>"
-    ```
-
-7. Push the feature branch to your remote repository.
-    ```bash
-    git push origin <branch-name>
-    ```
-
-8. Open new pull request.
+See [Testing](../README.md#testing) in the README. When changing the Erde
+parser, also run `_tools/erde-spec/selfhost.sh <erde checkout>`.

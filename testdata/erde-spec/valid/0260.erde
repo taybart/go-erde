@@ -1,0 +1,3 @@
+    local function end() { return 1 }
+    return end()
+  

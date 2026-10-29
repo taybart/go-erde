@@ -77,7 +77,7 @@ A script of '-' is read from stdin.`)
 	}
 
 	if opt_v || opt_i {
-		fmt.Println(lua.PackageCopyRight)
+		fmt.Println(lua.ErdeCopyRight)
 	}
 
 	if len(opt_l) > 0 {

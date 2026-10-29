@@ -1,0 +1,8 @@
+    local a = { b = 1 }
+
+    function a:c() {
+      return self.b
+    }
+
+    return a:c()
+  

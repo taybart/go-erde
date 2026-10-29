@@ -1,0 +1,4 @@
+    local a = { b = -1 }
+    a.b += 3
+    return a.b
+  

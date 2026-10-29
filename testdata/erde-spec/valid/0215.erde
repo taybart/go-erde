@@ -1,0 +1,3 @@
+    local a = (b, c = 2) -> b + c
+    return a(-1)
+  

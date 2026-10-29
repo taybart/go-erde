@@ -1,0 +1,4 @@
+    local a, b = {}, {}
+    a.c, b.d = 3, 4
+    return { a.c, b.d }
+  

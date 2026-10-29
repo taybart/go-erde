@@ -1,0 +1,4 @@
+    local a
+    for i = 1, 1 { function i() {}; a = type(i) }
+    return a
+  

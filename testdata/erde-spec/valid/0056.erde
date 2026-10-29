@@ -1,0 +1,11 @@
+    local a = 0
+    local result
+
+    do {
+      global a = 2
+      result = a
+      _G.a = nil
+    }
+
+    return result
+  

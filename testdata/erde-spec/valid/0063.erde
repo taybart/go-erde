@@ -1,0 +1,3 @@
+    local a = { b = 2 }
+    module { b } = a
+  

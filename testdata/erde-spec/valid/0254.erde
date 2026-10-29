@@ -1,0 +1,14 @@
+    local function a() {
+      return 1
+    }
+
+    do {
+      global function a() {
+        return 2
+      }
+    }
+
+    local result = a()
+    _G.a = nil
+    return result
+  

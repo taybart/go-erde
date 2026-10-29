@@ -1,0 +1,5 @@
+    local a = () -> (8, 9)
+    local b, c = -1, -1
+    b, c += a()
+    return { b, c }
+  

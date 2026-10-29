@@ -1,0 +1,4 @@
+    local a = 0
+    module function a() {}
+    a = 2
+  

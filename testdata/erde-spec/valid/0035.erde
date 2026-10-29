@@ -1,0 +1,4 @@
+    local a, b = -1, -1
+    a, b += 2, 3
+    return { a, b }
+  

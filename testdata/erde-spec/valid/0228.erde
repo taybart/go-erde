@@ -1,0 +1,4 @@
+    module a = 1
+    local f = a -> { a = 0 }
+    f()
+  

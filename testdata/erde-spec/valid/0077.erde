@@ -1,0 +1,4 @@
+    local a = 0
+    module a = 0
+    a = 2
+  

@@ -1,0 +1,5 @@
+    global { a: b } = { a = 3 }
+    local result = _G.b
+    _G.b = nil
+    return { _G.a, result }
+  

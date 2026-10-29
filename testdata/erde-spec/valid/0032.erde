@@ -1,0 +1,5 @@
+    local a = { b = -1 }
+    local c = { end = () -> a }
+    c:end().b += 5
+    return a.b
+  

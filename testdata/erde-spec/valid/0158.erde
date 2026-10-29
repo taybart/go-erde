@@ -1,0 +1,6 @@
+
+    math.floor(0) -- disalign compiled and source lines
+    return 1
+    <<
+    'a'
+  

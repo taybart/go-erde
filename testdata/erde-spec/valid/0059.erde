@@ -1,0 +1,4 @@
+    local a = { b = 2 }
+    local { b } = a
+    return b
+  

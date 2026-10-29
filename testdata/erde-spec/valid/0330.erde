@@ -1,0 +1,4 @@
+    local a = 0
+    for _, end in ipairs({ 2 }) { a = end }
+    return a
+  

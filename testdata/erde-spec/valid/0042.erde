@@ -1,0 +1,7 @@
+    local a = -1
+    global a = -1
+    a += 2
+    local result = _G.a
+    _G.a = nil
+    return result
+  

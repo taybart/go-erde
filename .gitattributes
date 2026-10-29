@@ -1,0 +1,2 @@
+# Spec snippets are compared byte-for-byte (ex. newlines in block strings)
+testdata/** -text

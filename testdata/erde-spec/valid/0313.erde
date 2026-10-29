@@ -1,0 +1,8 @@
+    if true {
+      return 1
+    } elseif true {
+      return 0
+    } else {
+      return 0
+    }
+  

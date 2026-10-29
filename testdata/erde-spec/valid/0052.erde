@@ -1,0 +1,13 @@
+    local a, b = {}, { c = -1 }
+    local index_counter = 0
+
+    setmetatable(a, {
+      __index = key => {
+        index_counter += 1
+        return b[key]
+      },
+    })
+
+    a.c += 3
+    return { index_counter, a.c }
+  

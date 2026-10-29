@@ -1,0 +1,1 @@
+myalias:1: unexpected eof (expected expression)

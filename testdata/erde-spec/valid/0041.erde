@@ -1,0 +1,4 @@
+    local end = { a = -1 }
+    end.a += 4
+    return end.a
+  

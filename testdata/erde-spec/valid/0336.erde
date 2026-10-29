@@ -1,0 +1,4 @@
+    local a = {}
+    for i, value in ipairs({ 1, 2 }) { value *= 2; table.insert(a, value) }
+    return a
+  

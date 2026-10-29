@@ -1,0 +1,4 @@
+    local a = f -> f
+    local b = a(() -> 3)()
+    return b
+  

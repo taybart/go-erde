@@ -1,0 +1,4 @@
+    local a = () -> (1, 2)
+    local b, c = (a())
+    return b
+  

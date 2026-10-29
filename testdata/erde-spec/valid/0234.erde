@@ -1,0 +1,3 @@
+    local a = b -> { return b }
+    return a(2)
+  

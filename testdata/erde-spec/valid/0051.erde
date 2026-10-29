@@ -1,0 +1,11 @@
+    local a = { b = -1 }
+    local call_counter = 0
+
+    local function c() {
+      call_counter += 1
+      return a
+    }
+
+    c().b += 2
+    return { call_counter, a.b }
+  

@@ -1,0 +1,4 @@
+    local a = {}
+    for i = 1, 3 { table.insert(a, i) }
+    return a
+  

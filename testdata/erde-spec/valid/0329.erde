@@ -1,0 +1,4 @@
+    local a = 0
+    for end = 1, 1 { a = end }
+    return a
+  

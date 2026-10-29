@@ -1,0 +1,3 @@
+    local a = (...b) -> b
+    return a(5, 6)
+  

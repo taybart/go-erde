@@ -1,0 +1,6 @@
+    global a = 2
+    for _, a in ipairs({ 0 }) { a = 0 }
+    local result = _G.a
+    _G.a = nil
+    return result
+  

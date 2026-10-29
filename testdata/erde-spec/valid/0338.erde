@@ -1,0 +1,8 @@
+    local a = {}
+    for i = 1, 2 {
+      local increment = () -> { i += 1 }
+      increment()
+      table.insert(a, i)
+    }
+    return a
+  

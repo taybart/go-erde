@@ -1,0 +1,1 @@
+[string "local..."]:1: cannot use scopes for table values

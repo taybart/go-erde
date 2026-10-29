@@ -1,0 +1,4 @@
+    local a = 0
+    module { a } = {}
+    a = 3
+  

@@ -1,0 +1,5 @@
+    local a = 2
+    local b = a
+    (() -> 0)()
+    return b
+  

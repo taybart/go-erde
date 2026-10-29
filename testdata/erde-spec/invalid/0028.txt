@@ -1,0 +1,1 @@
+[string "a, b(..."]:1: cannot assign value to function call

@@ -1,0 +1,1 @@
+[string "funct..."]:1: cannot use '...' outside a vararg function

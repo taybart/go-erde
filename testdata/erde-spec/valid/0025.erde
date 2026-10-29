@@ -1,0 +1,5 @@
+    local a = {}
+    a.b = () -> a
+    a.b().c = 1
+    return a.c
+  

@@ -1,0 +1,4 @@
+    local a = -1
+    a += true && 2 || 0
+    return a
+  

@@ -1,0 +1,1 @@
+[string "goto ..."]:1: failed to find goto label 'test'

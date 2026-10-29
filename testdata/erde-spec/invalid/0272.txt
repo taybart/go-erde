@@ -1,0 +1,1 @@
+[string "local..."]:1: cannot use '...' outside a vararg function

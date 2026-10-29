@@ -1,0 +1,6 @@
+    local x = 1
+    goto end
+    x = 0
+    ::end::
+    return x
+  
