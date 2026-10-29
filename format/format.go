@@ -36,6 +36,8 @@ type token struct {
 	spaced bool
 	// Whether this token was added by the formatter (ex. a trailing comma).
 	synthetic bool
+	// Whether to start a new line at this token (ex. after `{` in `{ a,\n}`).
+	breakBefore bool
 	// Column of the token in the source, and the indentation (width) of its
 	// line (only set for comments).
 	column, indent int
@@ -68,6 +70,7 @@ func Format(source []byte, opts Options) ([]byte, error) {
 	}
 
 	tokens = trailingCommas(tokens)
+	expandBraces(tokens)
 	for _, t := range tokens {
 		if t.Kind == parse.RawString {
 			t.Text = preferSingleQuotes(t.Text)
@@ -227,6 +230,34 @@ func trailingCommas(tokens []*token) []*token {
 	return result
 }
 
+// expandBraces puts the contents of multiline `{ ... }` (blocks and tables) on
+// their own lines (ex. `if x { a\n}` becomes `if x {\n  a\n}`).
+func expandBraces(tokens []*token) {
+	var stack []int
+	for i, t := range tokens {
+		switch {
+		case is(t, "{"):
+			stack = append(stack, i)
+		case is(t, "}") && len(stack) > 0:
+			o := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if o == i-1 || tokens[o].Line == t.Line {
+				continue // empty, or single line
+			}
+			if next := tokens[o+1]; next.Line == tokens[o].EndLine && next.Kind != parse.RawComment {
+				next.breakBefore = true
+			}
+			if tokens[i-1].EndLine == t.Line {
+				t.breakBefore = true
+			}
+		case is(t, "(", "["):
+			stack = append(stack, -1)
+		case is(t, ")", "]") && len(stack) > 0:
+			stack = stack[:len(stack)-1]
+		}
+	}
+}
+
 // isTableBrace checks whether the `{` at tokens[i] starts a table (or a
 // destructure) rather than a block.
 func isTableBrace(tokens []*token, i int) bool {
@@ -288,7 +319,7 @@ type lineGroup struct {
 func groupLines(tokens []*token) []lineGroup {
 	var groups []lineGroup
 	for i, t := range tokens {
-		if i == 0 || t.Line > tokens[i-1].EndLine {
+		if i == 0 || t.Line > tokens[i-1].EndLine || t.breakBefore {
 			blank := i > 0 && t.Line > tokens[i-1].EndLine+1
 			groups = append(groups, lineGroup{blankBefore: blank})
 		}

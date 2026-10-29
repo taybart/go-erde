@@ -88,6 +88,15 @@ func TestFormatStyle(t *testing.T) {
 		{"local t = { 1, 2, }", "local t = { 1, 2 }"},
 		{"for k, v in ... {\nprint(k)\n}", "for k, v in ... {\n  print(k)\n}"},
 
+		// multiline braces get their contents on their own lines
+		{"if x { error('y')\n}", "if x {\n  error('y')\n}"},
+		{"if x {\nf() }", "if x {\n  f()\n}"},
+		{"if x { a()\n} else { b() }", "if x {\n  a()\n} else { b() }"},
+		{"local t = { a = 1,\nb = 2 }", "local t = {\n  a = 1,\n  b = 2,\n}"},
+		{"f({ a = 1,\nb = 2 })", "f({\n  a = 1,\n  b = 2,\n})"},
+		{"if x { -- why\na()\n}", "if x { -- why\n  a()\n}"},
+		{"f(a,\nb)", "f(a,\n  b)"}, // parens are left alone
+
 		// one line blocks stay on one line
 		{"if x {y()}\nlocal f = () -> {return 1}", "if x { y() }\nlocal f = () -> { return 1 }"},
 	}
