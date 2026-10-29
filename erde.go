@@ -24,7 +24,7 @@ func isErdePath(path string) bool {
 
 // LoadErde is like Load, but for Erde source.
 func (ls *LState) LoadErde(reader io.Reader, name string) (*LFunction, error) {
-	chunk, err := parse.ParseErde(reader, name)
+	chunk, err := parse.ParseErdeWithOptions(reader, name, ls.Options.Erde)
 	if err != nil {
 		return nil, newApiErrorE(ApiErrorSyntax, err)
 	}

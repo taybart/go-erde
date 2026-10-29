@@ -80,6 +80,11 @@ type erdeParser struct {
 	// Innermost loop, or nil outside of loops (reset at function boundaries).
 	loop *erdeLoop
 
+	opts ErdeOptions
+	// Token index of the current match arm's `=>`, which ends the arm's
+	// patterns instead of starting an arrow function (-1 outside of patterns).
+	armArrowIndex int
+
 	isVarargs           bool
 	isModuleReturnBlock bool
 	moduleReturnLine    int
@@ -104,7 +109,12 @@ type erdeDestructure struct {
 
 // ParseErde parses Erde source into a Lua chunk, which can be passed to
 // `lua.Compile` like any chunk returned by `Parse`.
-func ParseErde(reader io.Reader, name string) (chunk []ast.Stmt, err error) {
+func ParseErde(reader io.Reader, name string) ([]ast.Stmt, error) {
+	return ParseErdeWithOptions(reader, name, ErdeOptions{})
+}
+
+// ParseErdeWithOptions is like ParseErde, but w/ experimental extensions.
+func ParseErdeWithOptions(reader io.Reader, name string, opts ErdeOptions) (chunk []ast.Stmt, err error) {
 	text, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
@@ -123,6 +133,8 @@ func ParseErde(reader io.Reader, name string) (chunk []ast.Stmt, err error) {
 		scopes:              []map[string]string{{}},
 		isVarargs:           true,
 		isModuleReturnBlock: true,
+		opts:                opts,
+		armArrowIndex:       -1,
 	}
 
 	defer func() {
@@ -176,6 +188,11 @@ func isErdeSyntax(token erdeToken, value string) bool {
 }
 
 func (p *erdeParser) is(value string) bool { return isErdeSyntax(p.cur, value) }
+
+func (p *erdeParser) isArrow(index int) bool {
+	token := p.tokens[index]
+	return index != p.armArrowIndex && (isErdeSyntax(token, "->") || isErdeSyntax(token, "=>"))
+}
 
 func (p *erdeParser) branch(value string) bool {
 	if p.is(value) {
@@ -856,12 +873,11 @@ func (p *erdeParser) terminalExpression() ast.Expr {
 		}
 	}
 
-	next := p.tokens[p.index+1]
-	isArrowFunction := isErdeSyntax(next, "->") || isErdeSyntax(next, "=>")
+	isArrowFunction := p.isArrow(p.index + 1)
 
 	if _, ok := erdeSurroundEnds[p.cur.Value]; ok && !isArrowFunction && p.cur.Type == erdeSymbol {
-		past, _ := p.lookPastSurround(p.index)
-		isArrowFunction = isErdeSyntax(past, "->") || isErdeSyntax(past, "=>")
+		_, pastIndex := p.lookPastSurround(p.index)
+		isArrowFunction = p.isArrow(pastIndex)
 	}
 
 	switch {
@@ -1065,6 +1081,156 @@ func (p *erdeParser) ifElse() ast.Stmt {
 	}
 
 	return p.closed(root)
+}
+
+// isMatchStatement checks for an (experimental) match statement. `match` is a
+// contextual keyword: it is an ordinary name everywhere else (ex.
+// `s:match(p)`), and at the start of a statement when followed by anything
+// that continues a name (ex. `match = 1`, `match.x = 1`, `match(x)`).
+func (p *erdeParser) isMatchStatement() bool {
+	if !p.opts.Match || p.cur.Type != erdeWord || !p.is("match") {
+		return false
+	}
+
+	next := p.tokens[p.index+1]
+	if next.Type != erdeSymbol {
+		return true
+	}
+
+	switch next.Value {
+	case "=", ",", ".", "[", ":":
+		return false
+	case "(":
+		// `match(x)` is a call, `match (x) {` is a match statement.
+		past, _ := p.lookPastSurround(p.index + 1)
+		return isErdeSyntax(past, "{")
+	}
+
+	// `match += 1` (but `match -x {` is a match statement)
+	return !erdeAssignmentOperators[next.Value] || !isErdeSyntax(p.tokens[p.index+2], "=")
+}
+
+// matchStatement compiles an (experimental) match statement into an if chain:
+//
+//	do
+//	  local subject = <subject>
+//	  if subject == a or subject == b then ... elseif ... else ... end
+//	end
+func (p *erdeParser) matchStatement() ast.Stmt {
+	line := p.cur.Line
+	p.consume() // match
+
+	subjectName := p.newTmpName()
+	subject := erdeIdent(subjectName, line)
+	stmts := []ast.Stmt{erdeLocal([]string{subjectName}, []ast.Expr{p.expression(1)}, line)}
+
+	var root, last *ast.IfStmt
+	var fallback []ast.Stmt
+	hasFallback := false
+
+	p.expect("{")
+	for !p.is("}") {
+		if p.cur.Type == erdeEOF {
+			p.throwEOF("unexpected eof, missing '}'")
+		}
+		if hasFallback {
+			p.throw(p.cur.Line, "unreachable match arm (after '_')")
+		}
+
+		armLine := p.cur.Line
+		condition := p.matchArmCondition(subject)
+		body := p.braceBlock()
+		p.branch(",")
+
+		if condition == nil {
+			fallback, hasFallback = body, true
+			continue
+		}
+
+		arm := erdeLine(&ast.IfStmt{Condition: condition, Then: body, Else: []ast.Stmt{}}, armLine)
+		arm.SetLastLine(p.prevLine())
+		if root == nil {
+			root = arm
+		} else {
+			last.Else = []ast.Stmt{arm}
+		}
+		last = arm
+	}
+	p.expect("}")
+
+	switch {
+	case root != nil:
+		if hasFallback {
+			last.Else = fallback
+		}
+		stmts = append(stmts, p.closed(root))
+	case hasFallback:
+		stmts = append(stmts, p.closed(erdeLine(&ast.DoBlockStmt{Stmts: fallback}, line)))
+	}
+
+	return p.closed(erdeLine(&ast.DoBlockStmt{Stmts: stmts}, line))
+}
+
+// matchArmCondition parses `pattern {'|' pattern} ['if' guard] '=>'`, returning
+// nil for a catch all arm (`_ =>`).
+func (p *erdeParser) matchArmCondition(subject ast.Expr) ast.Expr {
+	line := p.cur.Line
+
+	oldArmArrowIndex := p.armArrowIndex
+	p.armArrowIndex = p.findArmArrow()
+	defer func() { p.armArrowIndex = oldArmArrowIndex }()
+
+	var condition ast.Expr
+	if p.is("_") && p.cur.Type == erdeWord {
+		p.consume()
+	} else {
+		for {
+			// Patterns stop before `|` (bitwise or), so `|` separates them.
+			pattern := erdeLine(&ast.RelationalOpExpr{Operator: "==", Lhs: subject, Rhs: p.expression(erdeBinops["|"].prec + 1)}, line)
+			if condition == nil {
+				condition = pattern
+			} else {
+				condition = p.binop("||", line, condition, pattern)
+			}
+			if !p.branch("|") {
+				break
+			}
+		}
+	}
+
+	if p.branch("if") {
+		guard := p.expression(1)
+		if condition == nil {
+			condition = guard
+		} else {
+			condition = p.binop("&&", line, condition, guard)
+		}
+	}
+
+	p.expect("=>")
+	return condition
+}
+
+// findArmArrow finds the `=>` ending the current match arm's patterns (outside
+// of any surrounds), or -1 if there is none.
+func (p *erdeParser) findArmArrow() int {
+	for i := p.index; ; {
+		token := p.tokens[i]
+		switch {
+		case token.Type == erdeEOF:
+			return -1
+		case token.Type != erdeSymbol:
+			i++
+		case token.Value == "=>":
+			return i
+		case token.Value == "{", token.Value == "}":
+			return -1 // arm body (or end of match), so the arrow is missing
+		case erdeSurroundEnds[token.Value] != "":
+			_, i = p.lookPastSurround(i)
+		default:
+			i++
+		}
+	}
 }
 
 /* }}} */
@@ -1277,6 +1443,8 @@ func (p *erdeParser) statement() []ast.Stmt {
 		stmts = []ast.Stmt{p.closed(erdeLine(&ast.DoBlockStmt{Stmts: p.braceBlock()}, line))}
 	case p.is("if"):
 		stmts = []ast.Stmt{p.ifElse()}
+	case p.isMatchStatement():
+		stmts = []ast.Stmt{p.matchStatement()}
 	case p.is("for"):
 		stmts = []ast.Stmt{p.forLoop()}
 	case p.is("while"):

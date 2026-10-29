@@ -36,6 +36,64 @@ cat script.erde | erde - # stdin (also works w/ `erde <(...)`)
 Scripts that don't end in `.lua` are treated as Erde (use `-lang lua` or
 `-lang erde` to override). See `erde -h` for all options.
 
+## Experimental extensions
+
+go-erde can enable language extensions that the reference compiler does not
+support. They are off by default, and while they are off go-erde parses exactly
+the reference compiler's language.
+Scripts that use them only run on go-erde (or as `erde -c` output).
+
+```sh
+erde -X match script.erde
+```
+
+```go
+L := lua.NewState(lua.Options{Erde: parse.ErdeOptions{Match: true}})
+chunk, err := parse.ParseErdeWithOptions(reader, "name.erde", parse.ErdeOptions{Match: true})
+```
+
+Options on the `LState` apply to everything it loads, including `require`d
+modules.
+
+### `match`
+
+Rust style `match` statements:
+
+```erde
+match mode {
+  "movie" => { ... }
+  "show" | "series" => { ... }   -- any of
+  _ if count > 5 => { ... }      -- guard
+  _ => { ... }                   -- anything else (must be last)
+}
+```
+
+This compiles to an `if` / `elseif` / `else` chain:
+
+```lua
+do
+  local subject = mode
+  if subject == "movie" then ...
+  elseif subject == "show" or subject == "series" then ...
+  elseif count > 5 then ...
+  else ... end
+end
+```
+
+- The subject is evaluated once. There is no fallthrough.
+- Patterns are any expression compared w/ `==`. Names are values (ex. a
+  constant like `MOVIE =>`), not bindings.
+- `|` separates patterns, so a bitwise or in a pattern needs parentheses
+  (`(a | b) =>`).
+- `pattern if guard =>` also requires `guard`.
+- `break` and `continue` in an arm apply to the enclosing loop.
+- `match` is a contextual keyword, so existing code that uses it as a name
+  keeps working (`s:match(p)`, `string.match`, `t.match`, `local match = 1`).
+  At the start of a statement, `match` followed by `=`, `,`, `.`, `[`, `:`, an
+  assignment operator, or a call (`match(x)`) is still a name; `match (x) {` is
+  a match statement.
+- Statement only (not an expression).
+
 ## Go API
 
 The package name is `lua`, since it is still a Lua VM. Everything from

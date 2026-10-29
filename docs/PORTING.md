@@ -19,12 +19,14 @@ Compared to upstream gopher-lua:
 | | Files | Change |
 | --- | --- | --- |
 | **Unchanged** | `vm.go`, `_vm.go`, `opcode.go`, `value.go`, `table.go`, `function.go`, `alloc.go`, all standard libraries | none |
-| | `compile.go`, `state.go`, `_state.go`, `ast/`, `parse/parser.go(.y)`, `parse/lexer.go` | import path only |
+| | `compile.go`, `ast/`, `parse/parser.go(.y)`, `parse/lexer.go` | import path only |
 | **Hooks** (marked `go-erde`) | `auxlib.go` | `LoadFile` loads `*.erde` w/ the Erde parser (3 lines) |
 | | `config.go` | `./?.erde` added to the default `package.path` |
 | | `linit.go` | open the `bit32` library |
+| | `state.go`, `_state.go` | `Options.Erde` (experimental extensions for Erde source loaded by the state) |
 | **New** | `parse/erde_lexer.go`, `parse/erde_parser.go` | the Erde front end (Erde -> AST) |
 | | `erde.go` | `LoadErde`, `LoadErdeString`, `DoErdeString` |
+| | `parse/erde_options.go` | experimental extensions (ex. `match`), off by default |
 | | `bit32lib.go` | Lua 5.2's `bit32` (gopher-lua is Lua 5.1, which has no bit operators) |
 | | `luagen/` | AST -> Lua source (optional, see [strategy B](#b-source-to-source)) |
 | | `cmd/erde/` | CLI (from gopher-lua's `glua`) |
@@ -150,6 +152,19 @@ so they can never clash w/ user names; a source printer must rename them).
 | `module x = 1`, later `x` | `_MODULE.x = 1`, later `_MODULE.x`, w/ `local _MODULE = {}` at the start of the chunk and `return _MODULE` at the end |
 | `local function f() {}` | `local function f() end` (`f` can refer to itself) |
 | `if`, `for`, `while`, `repeat`, `do`, `goto`, `::label::` | same as Lua, w/ braces |
+
+Experimental (go-erde only, off by default, see the README):
+
+| Erde | Lua |
+| --- | --- |
+| `match s { a \| b => { X } _ if g => { Y } _ => { Z } }` | `do local tmp = s if tmp == a or tmp == b then X elseif g then Y else Z end end` |
+
+Keep experiments behind an option, so the default language stays identical to
+the reference compiler. Prefer contextual keywords over reserved ones: `match`
+is only a keyword at the start of a statement when the next token can't
+continue a name (`=`, `,`, `.`, `[`, `:`, `op=`, or a call `match(x)` that isn't
+followed by `{`), so code using `match` as a name (ex. `s:match(p)`) still
+works with the experiment on.
 
 Errors the parser must raise (the reference compiler does):
 
