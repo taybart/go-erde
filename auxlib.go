@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/yuin/gopher-lua/parse"
 )
 
 /* checkType {{{ */
@@ -386,11 +388,32 @@ func (ls *LState) LoadFile(path string) (*LFunction, error) {
 		}
 	}
 
+	if strings.HasSuffix(path, ".erde") {
+		return ls.LoadErde(reader, path)
+	}
+
 	return ls.Load(reader, path)
 }
 
 func (ls *LState) LoadString(source string) (*LFunction, error) {
 	return ls.Load(strings.NewReader(source), "<string>")
+}
+
+// LoadErde is like Load, but for Erde (https://erde-lang.github.io/) source.
+func (ls *LState) LoadErde(reader io.Reader, name string) (*LFunction, error) {
+	chunk, err := parse.ParseErde(reader, name)
+	if err != nil {
+		return nil, newApiErrorE(ApiErrorSyntax, err)
+	}
+	proto, err := Compile(chunk, name)
+	if err != nil {
+		return nil, newApiErrorE(ApiErrorSyntax, err)
+	}
+	return newLFunctionL(proto, ls.currentEnv(), 0), nil
+}
+
+func (ls *LState) LoadErdeString(source string) (*LFunction, error) {
+	return ls.LoadErde(strings.NewReader(source), "<string>")
 }
 
 func (ls *LState) DoFile(path string) error {
@@ -404,6 +427,15 @@ func (ls *LState) DoFile(path string) error {
 
 func (ls *LState) DoString(source string) error {
 	if fn, err := ls.LoadString(source); err != nil {
+		return err
+	} else {
+		ls.Push(fn)
+		return ls.PCall(0, MultRet, nil)
+	}
+}
+
+func (ls *LState) DoErdeString(source string) error {
+	if fn, err := ls.LoadErdeString(source); err != nil {
 		return err
 	} else {
 		ls.Push(fn)
