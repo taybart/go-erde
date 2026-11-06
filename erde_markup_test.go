@@ -9,11 +9,11 @@ import (
 	"github.com/taybart/go-erde/parse"
 )
 
-var erdeJSXOptions = parse.ErdeOptions{JSX: true}
+var erdeMarkupOptions = parse.ErdeOptions{Markup: true}
 
-const erdeJSXPrelude = "local { h, render, map, raw, document } = require('erde.jsx')\n"
+const erdeMarkupPrelude = "local { h, render, map, raw, document } = require('erde.markup')\n"
 
-var erdeJSXCases = []struct {
+var erdeMarkupCases = []struct {
 	source string
 	want   string
 }{
@@ -98,10 +98,10 @@ var erdeJSXCases = []struct {
 return render(page)`, `<html><head><title>t</title></head><body class="x" id="y">text that ends w/ a quote&#39;s apostrophe</body></html>`},
 }
 
-func TestErdeJSX(t *testing.T) {
-	for _, c := range erdeJSXCases {
-		source := erdeJSXPrelude + c.source
-		L := NewState(Options{Erde: erdeJSXOptions})
+func TestErdeMarkup(t *testing.T) {
+	for _, c := range erdeMarkupCases {
+		source := erdeMarkupPrelude + c.source
+		L := NewState(Options{Erde: erdeMarkupOptions})
 		if err := L.DoErdeString(source); err != nil {
 			t.Errorf("%s\n%v", c.source, err)
 		} else if got := L.Get(-1).String(); got != c.want {
@@ -111,10 +111,10 @@ func TestErdeJSX(t *testing.T) {
 	}
 }
 
-func TestLuagenErdeJSX(t *testing.T) {
-	for _, c := range erdeJSXCases {
-		source := erdeJSXPrelude + c.source
-		chunk, err := parse.ParseErdeWithOptions(strings.NewReader(source), "<string>", erdeJSXOptions)
+func TestLuagenErdeMarkup(t *testing.T) {
+	for _, c := range erdeMarkupCases {
+		source := erdeMarkupPrelude + c.source
+		chunk, err := parse.ParseErdeWithOptions(strings.NewReader(source), "<string>", erdeMarkupOptions)
 		if err != nil {
 			t.Fatalf("%s\n%v", c.source, err)
 		}
@@ -131,13 +131,13 @@ func TestLuagenErdeJSX(t *testing.T) {
 }
 
 // Without an `h` in scope, the runtime's `h` is imported automatically.
-var erdeJSXAutoCases = []struct {
+var erdeMarkupAutoCases = []struct {
 	source string
 	want   string
 }{
 	{`return tostring(<p class="x">hi</p>)`, `<p class="x">hi</p>`},
 	{`local Card = props -> <div>{props.children}</div>
-return require('erde.jsx').render(<Card><b/></Card>)`, `<div><b></b></div>`},
+return require('erde.markup').render(<Card><b/></Card>)`, `<div><b></b></div>`},
 	// a declared `h` (local, or a parameter) wins
 	{`local h = (tag) -> 'mine ' .. tag; return <p/>`, `mine p`},
 	{`local f = h -> <p/>; return f(t -> 'param ' .. t)`, `param p`},
@@ -147,9 +147,9 @@ return require('erde.jsx').render(<Card><b/></Card>)`, `<div><b></b></div>`},
 	{`module x = tostring(<p/>)`, ``},
 }
 
-func TestErdeJSXAutomaticRuntime(t *testing.T) {
-	for _, c := range erdeJSXAutoCases {
-		chunk, err := parse.ParseErdeWithOptions(strings.NewReader(c.source), "<string>", erdeJSXOptions)
+func TestErdeMarkupAutomaticRuntime(t *testing.T) {
+	for _, c := range erdeMarkupAutoCases {
+		chunk, err := parse.ParseErdeWithOptions(strings.NewReader(c.source), "<string>", erdeMarkupOptions)
 		if err != nil {
 			t.Fatalf("%s\n%v", c.source, err)
 		}
@@ -162,7 +162,7 @@ func TestErdeJSXAutomaticRuntime(t *testing.T) {
 			{"native", func(L *LState) error { return L.DoErdeString(c.source) }},
 			{"luagen", func(L *LState) error { return L.DoString(generated) }},
 		} {
-			L := NewState(Options{Erde: erdeJSXOptions})
+			L := NewState(Options{Erde: erdeMarkupOptions})
 			if err := run.fn(L); err != nil {
 				t.Errorf("%s (%s)\n%s\n%v", c.source, run.name, generated, err)
 			} else if got := L.Get(-1); c.want != "" && got.String() != c.want {
@@ -174,11 +174,11 @@ func TestErdeJSXAutomaticRuntime(t *testing.T) {
 }
 
 // Elements are lowered to calls of the factory, which can be renamed.
-func TestErdeJSXFactory(t *testing.T) {
+func TestErdeMarkupFactory(t *testing.T) {
 	source := `local react = { createElement = (tag, props, ...) -> ({ tag = tag, n = select('#', ...) }) }
 local e = <div a="1">x{1}<b/></div>
 return e.tag .. e.n`
-	L := NewState(Options{Erde: parse.ErdeOptions{JSX: true, JSXFactory: "react.createElement"}})
+	L := NewState(Options{Erde: parse.ErdeOptions{Markup: true, MarkupFactory: "react.createElement"}})
 	defer L.Close()
 	if err := L.DoErdeString(source); err != nil {
 		t.Fatal(err)
@@ -188,12 +188,12 @@ return e.tag .. e.n`
 	}
 }
 
-func TestErdeJSXSyntaxErrors(t *testing.T) {
+func TestErdeMarkupSyntaxErrors(t *testing.T) {
 	cases := []struct {
 		source string
 		want   string
 	}{
-		{`local x = <p>`, "unterminated jsx element"},
+		{`local x = <p>`, "unterminated markup element"},
 		{`local x = <p>hi</b>`, "expected closing tag '</p>' (for line 2) got '</b>'"},
 		{`local x = <p></>`, "expected closing tag '</p>'"},
 		{`local x = <>a</p>`, "expected closing tag '</>'"},
@@ -201,14 +201,14 @@ func TestErdeJSXSyntaxErrors(t *testing.T) {
 		{`local x = <p a={}/>`, "can't be empty"},
 		{`local x = <p {a}/>`, "expected '...'"},
 		{`local x = <p !/>`, "expected attribute, '>', or '/>'"},
-		{`local x = <p>{1</p>`, "unterminated jsx expression"},
-		{`local x = <p>{-- line comments eat the brace}</p>`, "unterminated jsx expression"},
-		{`local x = <br>child</br>; require('erde.jsx').render(x)`, "can't have children"},
+		{`local x = <p>{1</p>`, "unterminated markup expression"},
+		{`local x = <p>{-- line comments eat the brace}</p>`, "unterminated markup expression"},
+		{`local x = <br>child</br>; require('erde.markup').render(x)`, "can't have children"},
 	}
 
 	for _, c := range cases {
-		L := NewState(Options{Erde: erdeJSXOptions})
-		err := L.DoErdeString(erdeJSXPrelude + c.source)
+		L := NewState(Options{Erde: erdeMarkupOptions})
+		err := L.DoErdeString(erdeMarkupPrelude + c.source)
 		L.Close()
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s\n  got %v, want error containing %q", c.source, err, c.want)
@@ -217,18 +217,31 @@ func TestErdeJSXSyntaxErrors(t *testing.T) {
 }
 
 // Without the experiment, `<` is always an operator.
-func TestErdeJSXDisabled(t *testing.T) {
+func TestErdeMarkupDisabled(t *testing.T) {
 	L := NewState()
 	defer L.Close()
 	if _, err := L.LoadErdeString(`local x = <p/>`); err == nil {
-		t.Error("jsx parsed w/o the jsx experiment")
+		t.Error("markup parsed w/o the markup experiment")
 	}
 }
 
-func TestFormatErdeJSX(t *testing.T) {
+// jsx is the old (deprecated) name of the experiment and the runtime.
+func TestErdeMarkupOldName(t *testing.T) {
+	var opts parse.ErdeOptions
+	if err := opts.Enable("match,jsx=ui.h"); err != nil || !opts.Markup || opts.MarkupFactory != "ui.h" {
+		t.Fatalf("-X jsx: %+v %v", opts, err)
+	}
+	L := NewState(Options{Erde: erdeMarkupOptions})
+	defer L.Close()
+	if err := L.DoErdeString(`assert(require('erde.jsx') == require('erde.markup'), 'erde.jsx')`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFormatErdeMarkup(t *testing.T) {
 	in := "local x=<div   class='a'>\n  hi {name}\n    <b/>\n</div>\nlocal y=a<b"
 	want := "local x = <div   class='a'>\n  hi {name}\n    <b/>\n</div>\nlocal y = a < b\n"
-	got, err := format.Format([]byte(in), format.Options{Erde: erdeJSXOptions})
+	got, err := format.Format([]byte(in), format.Options{Erde: erdeMarkupOptions})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,9 +250,9 @@ func TestFormatErdeJSX(t *testing.T) {
 	}
 }
 
-// erdeJSXActionsPrelude finds action ids in rendered html (in order).
-const erdeJSXActionsPrelude = `local jsx = require('erde.jsx')
-local { state, render } = jsx
+// erdeMarkupActionsPrelude finds action ids in rendered html (in order).
+const erdeMarkupActionsPrelude = `local markup = require('erde.markup')
+local { state, render } = markup
 local ids = (html) -> {
   local out = {}
   for id in html:gmatch("erde%.rpc%('([^']+)'") { table.insert(out, id) }
@@ -248,23 +261,23 @@ local ids = (html) -> {
 `
 
 // mount registers `on*` functions as actions, and dispatch runs them.
-func TestErdeJSXActions(t *testing.T) {
-	L := NewState(Options{Erde: erdeJSXOptions})
+func TestErdeMarkupActions(t *testing.T) {
+	L := NewState(Options{Erde: erdeMarkupOptions})
 	defer L.Close()
 
-	source := erdeJSXActionsPrelude + `local count, last = 0, nil
+	source := erdeMarkupActionsPrelude + `local count, last = 0, nil
 local App = () -> <main>
   <button onclick={() -> { count += 1 }} on:dblclick={e -> { last = e.type }}>{count}</button>
   <p onClick={'not a function'}>{last}</p>
 </main>
 local root = () -> <App/>
-local page = jsx.document(jsx.mount(root, { rpc = '/rpc', headers = { ['X-B'] = 's"1', ['X-A'] = 'a' } }))
+local page = markup.document(markup.mount(root, { rpc = '/rpc', headers = { ['X-B'] = 's"1', ['X-A'] = 'a' } }))
 local [dbl, click] = ids(page)
-jsx.dispatch(click, {})
-jsx.dispatch(click)
-jsx.dispatch(dbl, { type = 'dblclick' })
-local res = jsx.dispatch(click)
-local ok, err = pcall(jsx.dispatch, 'nope')
+markup.dispatch(click, {})
+markup.dispatch(click)
+markup.dispatch(dbl, { type = 'dblclick' })
+local res = markup.dispatch(click)
+local ok, err = pcall(markup.dispatch, 'nope')
 return page, res.body, res.headers['Content-Type'], dbl .. ' ' .. click, err`
 	if err := L.DoErdeString(source); err != nil {
 		t.Fatal(err)
@@ -288,17 +301,17 @@ return page, res.body, res.headers['Content-Type'], dbl .. ' ' .. click, err`
 	if contentType != "text/html; charset=utf-8" {
 		t.Errorf("content type %q", contentType)
 	}
-	if err != "jsx: unknown action nope" {
+	if err != "markup: unknown action nope" {
 		t.Errorf("got error %q", err)
 	}
 }
 
 // dispatch only sends the components whose own markup changed.
-func TestErdeJSXFragments(t *testing.T) {
-	L := NewState(Options{Erde: erdeJSXOptions})
+func TestErdeMarkupFragments(t *testing.T) {
+	L := NewState(Options{Erde: erdeMarkupOptions})
 	defer L.Close()
 
-	source := erdeJSXActionsPrelude + `local title, note, outside = 'hi', 'n', 'o'
+	source := erdeMarkupActionsPrelude + `local title, note, outside = 'hi', 'n', 'o'
 local Counter = (props) -> {
   local s = state({ count = props.start })
   return <button onclick={() -> { s.count += 1 }}>{s.count}</button>
@@ -315,11 +328,11 @@ local App = () -> <main>
   <button onclick={() -> { outside = 'O' }}>o</button>
 </main>
 local root = () -> <div>{outside}<App/></div>
-local page = jsx.document(jsx.mount(root, { rpc = '/rpc', morph = false }))
+local page = markup.document(markup.mount(root, { rpc = '/rpc', morph = false }))
 local [a, b, n, t, noop, o] = ids(page)
 local out = {}
 for _, id in ipairs({ b, noop, n, t, a, o }) {
-  table.insert(out, jsx.dispatch(id).body)
+  table.insert(out, markup.dispatch(id).body)
 }
 return table.concat(out, '\n')`
 	if err := L.DoErdeString(source); err != nil {
@@ -352,13 +365,13 @@ return table.concat(out, '\n')`
 }
 
 // A component w/ a document root (ex. <html>) can't be sent on its own.
-func TestErdeJSXFragmentsDocument(t *testing.T) {
-	L := NewState(Options{Erde: erdeJSXOptions})
+func TestErdeMarkupFragmentsDocument(t *testing.T) {
+	L := NewState(Options{Erde: erdeMarkupOptions})
 	defer L.Close()
-	source := erdeJSXActionsPrelude + `local x = 1
+	source := erdeMarkupActionsPrelude + `local x = 1
 local App = () -> <html><body><button onclick={() -> { x += 1 }}>{x}</button></body></html>
-local page = jsx.document(jsx.mount(() -> <App/>, { rpc = '/rpc', morph = false }))
-return jsx.dispatch(ids(page)[1]).body`
+local page = markup.document(markup.mount(() -> <App/>, { rpc = '/rpc', morph = false }))
+return markup.dispatch(ids(page)[1]).body`
 	if err := L.DoErdeString(source); err != nil {
 		t.Fatal(err)
 	}
@@ -368,10 +381,10 @@ return jsx.dispatch(ids(page)[1]).body`
 }
 
 // Without mount, functions in attributes are skipped (plain server rendering).
-func TestErdeJSXActionsUnmounted(t *testing.T) {
-	L := NewState(Options{Erde: erdeJSXOptions})
+func TestErdeMarkupActionsUnmounted(t *testing.T) {
+	L := NewState(Options{Erde: erdeMarkupOptions})
 	defer L.Close()
-	if err := L.DoErdeString(`return require('erde.jsx').document(<b onclick={() -> 1}/>)`); err != nil {
+	if err := L.DoErdeString(`return require('erde.markup').document(<b onclick={() -> 1}/>)`); err != nil {
 		t.Fatal(err)
 	}
 	if got := L.Get(-1).String(); got != "<!DOCTYPE html><b></b>" {
@@ -380,11 +393,11 @@ func TestErdeJSXActionsUnmounted(t *testing.T) {
 }
 
 // state is kept per component instance (by position in the tree, or `key`).
-func TestErdeJSXState(t *testing.T) {
-	L := NewState(Options{Erde: erdeJSXOptions})
+func TestErdeMarkupState(t *testing.T) {
+	L := NewState(Options{Erde: erdeMarkupOptions})
 	defer L.Close()
 
-	source := erdeJSXActionsPrelude + `local show, items, order = false, { 'x', 'y' }, {}
+	source := erdeMarkupActionsPrelude + `local show, items, order = false, { 'x', 'y' }, {}
 
 local Counter = (props) -> {
   local s = state({ count = props.start || 0 })
@@ -404,21 +417,21 @@ local App = () -> {
     {show && <Badge/>}
     <Counter name="a"/>
     <Counter name="b" start={10}/>
-    <ul>{jsx.map(items, it -> <Item key={it} name={it}/>)}</ul>
+    <ul>{markup.map(items, it -> <Item key={it} name={it}/>)}</ul>
   </main>
 }
 
 local root = () -> <App/>
 local out = {}
-jsx.mount(root, { rpc = '/rpc', morph = false })
+markup.mount(root, { rpc = '/rpc', morph = false })
 local page = render(root())
 table.insert(out, page)
 local [a, b, x, y] = ids(page)
-jsx.dispatch(b)                      -- b += 1
-jsx.dispatch(b)                      -- b += 1
+markup.dispatch(b)                      -- b += 1
+markup.dispatch(b)                      -- b += 1
 show = true                          -- a conditional sibling doesn't move state
-jsx.dispatch(a)                      -- a += 1
-jsx.dispatch(y)                      -- y += 1
+markup.dispatch(a)                      -- a += 1
+markup.dispatch(y)                      -- y += 1
 items = { 'y', 'x' }                 -- keys keep item state when reordering
 table.insert(out, render(root()))
 items = { 'x' }                      -- y is gone, so is its state
@@ -466,21 +479,21 @@ return table.concat(out, '\n'), table.concat(order, ' ', 1, 3)`
 		t.Errorf("missing data-erde\n%s", renders[0])
 	}
 
-	if err := L.DoErdeString(`require('erde.jsx').state({})`); err == nil || !strings.Contains(err.Error(), "while rendering a component") {
+	if err := L.DoErdeString(`require('erde.markup').state({})`); err == nil || !strings.Contains(err.Error(), "while rendering a component") {
 		t.Errorf("got %v", err)
 	}
 }
 
-// `-X jsx=name` sets the factory.
-func TestErdeJSXFactoryOption(t *testing.T) {
+// `-X markup=name` sets the factory.
+func TestErdeMarkupFactoryOption(t *testing.T) {
 	var opts parse.ErdeOptions
-	if err := opts.Enable("match, jsx=harmony.ui.h"); err != nil {
+	if err := opts.Enable("match, markup=harmony.ui.h"); err != nil {
 		t.Fatal(err)
 	}
-	if !opts.Match || !opts.JSX || opts.JSXFactory != "harmony.ui.h" {
+	if !opts.Match || !opts.Markup || opts.MarkupFactory != "harmony.ui.h" {
 		t.Errorf("got %+v", opts)
 	}
-	for _, bad := range []string{"jsx=", "jsx=a..b", "jsx=1x", "jsx=a-b", "jsx=local", "match=1", "nope"} {
+	for _, bad := range []string{"markup=", "markup=a..b", "markup=1x", "markup=a-b", "markup=local", "match=1", "nope"} {
 		if err := (&parse.ErdeOptions{}).Enable(bad); err == nil {
 			t.Errorf("%q: expected an error", bad)
 		}
@@ -488,14 +501,14 @@ func TestErdeJSXFactoryOption(t *testing.T) {
 }
 
 // A mounted page w/o actions is static: no client script.
-func TestErdeJSXStaticPage(t *testing.T) {
-	L := NewState(Options{Erde: erdeJSXOptions})
+func TestErdeMarkupStaticPage(t *testing.T) {
+	L := NewState(Options{Erde: erdeMarkupOptions})
 	defer L.Close()
-	source := `local jsx = require('erde.jsx')
-local static = jsx.document(jsx.mount(() -> <p>hi</p>, { rpc = '/' }))
-local staticInteractive = jsx.isInteractive()
-local live = jsx.document(jsx.mount(() -> <b onclick={() -> {}}/>, { rpc = '/' }))
-return static, tostring(staticInteractive), tostring(jsx.isInteractive()), tostring(live:find('<script>', 1, true) != nil)`
+	source := `local markup = require('erde.markup')
+local static = markup.document(markup.mount(() -> <p>hi</p>, { rpc = '/' }))
+local staticInteractive = markup.isInteractive()
+local live = markup.document(markup.mount(() -> <b onclick={() -> {}}/>, { rpc = '/' }))
+return static, tostring(staticInteractive), tostring(markup.isInteractive()), tostring(live:find('<script>', 1, true) != nil)`
 	if err := L.DoErdeString(source); err != nil {
 		t.Fatal(err)
 	}
@@ -508,14 +521,130 @@ return static, tostring(staticInteractive), tostring(jsx.isInteractive()), tostr
 }
 
 // The runtime's bytecode is shared, but each state gets its own module.
-func TestErdeJSXSharedRuntime(t *testing.T) {
+func TestErdeMarkupSharedRuntime(t *testing.T) {
 	a, b := NewState(), NewState()
 	defer a.Close()
 	defer b.Close()
-	if err := a.DoString(`require('erde.jsx').x = 1`); err != nil {
+	if err := a.DoString(`require('erde.markup').x = 1`); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.DoString(`assert(require('erde.jsx').x == nil, 'module shared between states')`); err != nil {
+	if err := b.DoString(`assert(require('erde.markup').x == nil, 'module shared between states')`); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// idiomorph is inlined from the vendored copy by default; a url loads it
+// from there instead, and false turns it off.
+func TestErdeMarkupMorph(t *testing.T) {
+	L := NewState(Options{Erde: erdeMarkupOptions})
+	defer L.Close()
+	source := `local markup = require('erde.markup')
+local page = morph -> markup.document(markup.mount(() -> <b onclick={() -> {}}/>, { rpc = '/', morph = morph }))
+return page(nil), page('/static/idiomorph.js'), page(false)`
+	if err := L.DoErdeString(source); err != nil {
+		t.Fatal(err)
+	}
+	vendored, url, off := L.Get(-3).String(), L.Get(-2).String(), L.Get(-1).String()
+	if !strings.Contains(vendored, "<script>var Idiomorph=function(){") || strings.Contains(vendored, "unpkg") {
+		t.Errorf("vendored: not inlined\n%.300s", vendored)
+	}
+	if !strings.Contains(url, `<script src="/static/idiomorph.js"></script>`) || strings.Contains(url, "var Idiomorph") {
+		t.Errorf("url\n%.300s", url)
+	}
+	if strings.Contains(off, "Idiomorph=") || strings.Contains(off, "<script src") {
+		t.Errorf("off\n%.300s", off)
+	}
+}
+
+// css turns tables into scoped styles.
+func TestErdeMarkupCSS(t *testing.T) {
+	L := NewState(Options{Erde: erdeMarkupOptions})
+	defer L.Close()
+	source := `local markup = require('erde.markup')
+local s = markup.css({
+  card = {
+    padding = '1rem',
+    backgroundColor = '#222',
+    border_top_width = 2,
+    ['&:hover'] = { borderColor = 'gold' },
+    ['&.big, &:focus'] = { padding = '2rem' },
+    ['$title'] = { margin = 0 },
+    img = { width = '100%' },
+    ['@media (max-width: 600px)'] = { padding = '.5rem', ['&:hover'] = { color = 'red' } },
+  },
+  title = { color = 'gold' },
+})
+local again = markup.css({ title = { color = 'gold' }, card = {
+  padding = '1rem', backgroundColor = '#222', border_top_width = 2,
+  ['&:hover'] = { borderColor = 'gold' }, ['&.big, &:focus'] = { padding = '2rem' },
+  ['$title'] = { margin = 0 }, img = { width = '100%' },
+  ['@media (max-width: 600px)'] = { padding = '.5rem', ['&:hover'] = { color = 'red' } },
+} })
+local other = markup.css({ title = { color = 'red' } })
+return s.card, s.title, again.card, other.title, markup.styles(), markup.render(<p class={s.card}/>), markup.document(<html><head><title>t</title></head><body/></html>), markup.document(<p/>), markup.document(<html lang="en"><body/></html>)`
+	if err := L.DoErdeString(source); err != nil {
+		t.Fatal(err)
+	}
+	card, title, again, other := L.Get(-9).String(), L.Get(-8).String(), L.Get(-7).String(), L.Get(-6).String()
+	styles, rendered, doc, bare, noHead := L.Get(-5).String(), L.Get(-4).String(), L.Get(-3).String(), L.Get(-2).String(), L.Get(-1).String()
+	if !strings.HasPrefix(noHead, `<!DOCTYPE html><html lang="en"><head><style data-erde-css>`) || !strings.HasSuffix(noHead, "</style></head><body></body></html>") {
+		t.Errorf("document w/ html but no head\n%s", noHead)
+	}
+
+	h := strings.TrimPrefix(card, "card-")
+	if card == "card-" || title != "title-"+h || again != card || other == title {
+		t.Fatalf("names: %s %s %s %s", card, title, again, other)
+	}
+	c, ti := "."+card, "."+title
+	want := strings.Join([]string{
+		c + " { background-color: #222; border-top-width: 2; padding: 1rem; }",
+		c + " " + ti + " { margin: 0; }",
+		c + ".big, " + c + ":focus { padding: 2rem; }",
+		c + ":hover { border-color: gold; }",
+		"@media (max-width: 600px) { " + c + " { padding: .5rem; } " + c + ":hover { color: red; } }",
+		c + " img { width: 100%; }",
+		ti + " { color: gold; }",
+	}, "\n")
+	if !strings.Contains(styles, want) {
+		t.Errorf("styles\n%s\nwant\n%s", styles, want)
+	}
+	if strings.Count(styles, ti+" { color: gold; }") != 1 {
+		t.Errorf("duplicate sheet\n%s", styles)
+	}
+	if rendered != `<p class="`+card+`"></p>` {
+		t.Errorf("render (no styles): %s", rendered)
+	}
+	if !strings.Contains(doc, "<title>t</title><style data-erde-css>") || !strings.Contains(doc, "</style></head>") {
+		t.Errorf("document w/ head\n%s", doc)
+	}
+	if !strings.HasPrefix(bare, "<!DOCTYPE html><style data-erde-css>") || !strings.HasSuffix(bare, "</style><p></p>") {
+		t.Errorf("document w/o head\n%s", bare)
+	}
+}
+
+// New styles after the page was sent need the whole page.
+func TestErdeMarkupCSSDispatch(t *testing.T) {
+	L := NewState(Options{Erde: erdeMarkupOptions})
+	defer L.Close()
+	source := erdeMarkupActionsPrelude + `local fancy = false
+local Btn = () -> {
+  local s = fancy && markup.css({ fancy = { color = 'gold' } }) || markup.css({ plain = { color = 'gray' } })
+  return <button class={s.fancy || s.plain} onclick={() -> { fancy = !fancy }}>x</button>
+}
+local page = markup.document(markup.mount(() -> <main><Btn/></main>, { rpc = '/', morph = false }))
+local id = ids(page)[1]
+local first = markup.dispatch(id).body  -- new css: whole page
+local second = markup.dispatch(id).body -- back to plain (already sent): fragment
+local third = markup.dispatch(id).body  -- fancy again (already sent): fragment
+return first, second, third`
+	if err := L.DoErdeString(source); err != nil {
+		t.Fatal(err)
+	}
+	first, second, third := L.Get(-3).String(), L.Get(-2).String(), L.Get(-1).String()
+	if !strings.HasPrefix(first, "<!DOCTYPE html><style data-erde-css>") || !strings.Contains(first, "color: gold") {
+		t.Errorf("first\n%s", first)
+	}
+	if !strings.HasPrefix(second, "<template") || !strings.HasPrefix(third, "<template") {
+		t.Errorf("second / third\n%s\n%s", second, third)
 	}
 }

@@ -26,28 +26,28 @@ type ErdeOptions struct {
 	// `s:match(p)`, `local match = 1`, `match(x)`).
 	Match bool
 
-	// JSX enables JSX style elements, which are lowered to calls of
-	// JSXFactory (see erde_jsx.go):
+	// Markup enables HTML-like (JSX style) elements, which are lowered to calls of
+	// MarkupFactory (see erde_markup.go):
 	//
 	//	local page = <Layout title="home">
 	//	  <p class="greeting">hello {name}!</p>
 	//	</Layout>
 	//
-	// The runtime library `erde.jsx` provides a factory (`h`) that renders to
+	// The runtime library `erde.markup` provides a factory (`h`) that renders to
 	// HTML strings.
-	JSX bool
-	// JSXFactory is the (possibly dotted) name of the function elements are
+	Markup bool
+	// MarkupFactory is the (possibly dotted) name of the function elements are
 	// lowered to. By default, it's `h` if declared, otherwise the runtime
 	// library's `h` (imported automatically).
-	JSXFactory string
+	MarkupFactory string
 }
 
 // ErdeExperiments lists the experiments accepted by Enable.
-var ErdeExperiments = []string{"match", "jsx[=factory]"}
+var ErdeExperiments = []string{"match", "markup[=factory]"}
 
 // Enable turns on experiments by name, given as a comma separated list (ex.
-// from a command line flag). `jsx=name` also sets JSXFactory (ex.
-// `jsx=harmony.h`).
+// from a command line flag). `markup=name` also sets MarkupFactory (ex.
+// `markup=harmony.h`).
 func (o *ErdeOptions) Enable(names string) error {
 	for _, name := range strings.Split(names, ",") {
 		name, value, hasValue := strings.Cut(strings.TrimSpace(name), "=")
@@ -55,13 +55,13 @@ func (o *ErdeOptions) Enable(names string) error {
 		case name == "" && !hasValue:
 		case name == "match" && !hasValue:
 			o.Match = true
-		case name == "jsx":
-			o.JSX = true
+		case name == "markup" || name == "jsx": // jsx: the old (deprecated) name
+			o.Markup = true
 			if hasValue {
 				if !isDottedName(value) {
-					return fmt.Errorf("invalid jsx factory '%s' (expected a name, ex. h or jsx.h)", value)
+					return fmt.Errorf("invalid markup factory '%s' (expected a name, ex. h or ui.h)", value)
 				}
-				o.JSXFactory = value
+				o.MarkupFactory = value
 			}
 		default:
 			return fmt.Errorf("unknown erde experiment '%s' (available: %s)", name, strings.Join(ErdeExperiments, ", "))
@@ -71,7 +71,7 @@ func (o *ErdeOptions) Enable(names string) error {
 }
 
 // isDottedName reports whether s is a name or a dotted chain of names (ex.
-// `jsx.h`).
+// `markup.h`).
 func isDottedName(s string) bool {
 	for _, part := range strings.Split(s, ".") {
 		if part == "" || erdeKeywords[part] || !isErdeWordHead(part[0]) {

@@ -84,9 +84,9 @@ type erdeParser struct {
 	// Token index of the current match arm's `=>`, which ends the arm's
 	// patterns instead of starting an arrow function (-1 outside of patterns).
 	armArrowIndex int
-	// Local holding the automatic jsx factory (see jsxFactory), or "" if
+	// Local holding the automatic markup factory (see markupFactory), or "" if
 	// unused.
-	jsxRuntime string
+	markupRuntime string
 
 	isVarargs           bool
 	isModuleReturnBlock bool
@@ -854,9 +854,9 @@ func (p *erdeParser) terminalExpression() ast.Expr {
 		return erdeLine(&ast.NumberExpr{Value: p.consume()}, line)
 	case erdeSingleQuote, erdeDoubleQuote, erdeBlockString:
 		return p.indexChain(p.stringExpr()).expr
-	case erdeJsx:
+	case erdeMarkup:
 		if p.cur.Value == "<" {
-			return p.jsxElement()
+			return p.markupElement()
 		}
 	}
 
@@ -1512,8 +1512,8 @@ func (p *erdeParser) module() []ast.Stmt {
 		stmts = append(stmts, erdeLine(&ast.ReturnStmt{Exprs: []ast.Expr{erdeIdent(erdeModuleName, line)}}, line))
 	}
 
-	if p.jsxRuntime != "" {
-		stmts = append([]ast.Stmt{p.jsxRuntimeImport()}, stmts...)
+	if p.markupRuntime != "" {
+		stmts = append([]ast.Stmt{p.markupRuntimeImport()}, stmts...)
 	}
 
 	return stmts

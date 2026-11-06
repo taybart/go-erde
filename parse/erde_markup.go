@@ -8,7 +8,7 @@ import (
 	"github.com/taybart/go-erde/ast"
 )
 
-// JSX experiment (see ErdeOptions.JSX). Elements are lowered to calls of the
+// markup experiment (see ErdeOptions.Markup). Elements are lowered to calls of the
 // factory function (`h` by default), same as JSX's classic runtime:
 //
 //	<div class="card" id={id}>hi {name}</div>
@@ -19,11 +19,11 @@ import (
 //	<>a {b}</>                     h(nil, nil, 'a ', b)
 //
 // `h` is whatever `h` is in scope. When there isn't one, it's imported from
-// the runtime library (`require('erde.jsx').h`), so components don't need any
+// the runtime library (`require('erde.markup').h`), so components don't need any
 // imports (like JSX's automatic runtime).
 //
 // The content of <script> and <style> is raw text, like HTML (see
-// jsxRawTextTags), so `<style>a { color: red }</style>` is css, not an
+// markupRawTextTags), so `<style>a { color: red }</style>` is css, not an
 // expression.
 //
 // Lowercase tags (and tags w/ `-` or `:`) are strings, other tags are
@@ -32,20 +32,20 @@ import (
 // like JSX (lines are trimmed, whitespace only lines are dropped, and lines
 // are joined w/ a single space).
 //
-// JSX is lexed as part of the token stream: a `<` followed by a name or `>`
+// Markup is lexed as part of the token stream: a `<` followed by a name or `>`
 // starts an element wherever an expression may start (ie. not after a token
 // that ends a value, so `a < b` is still a comparison).
 
 /* Lexer {{{ */
 
-func isJsxNameHead(c byte) bool { return isErdeWordHead(c) || c == '@' || c == ':' }
+func isMarkupNameHead(c byte) bool { return isErdeWordHead(c) || c == '@' || c == ':' }
 
-func isJsxNameBody(c byte) bool {
+func isMarkupNameBody(c byte) bool {
 	return isErdeWordBody(c) || c == '-' || c == '.' || c == ':'
 }
 
-// jsxStart returns whether the `<` at the current position starts an element.
-func (lx *erdeLexer) jsxStart() bool {
+// markupStart returns whether the `<` at the current position starts an element.
+func (lx *erdeLexer) markupStart() bool {
 	if c := lx.peek(1); !(isErdeWordHead(c) || c == '>') {
 		return false
 	}
@@ -65,14 +65,14 @@ func (lx *erdeLexer) jsxStart() bool {
 		case ")", "]", "}", "...":
 			return false
 		}
-	case erdeJsx:
+	case erdeMarkup:
 		return prev.Value != ">" && prev.Value != "/>"
 	}
 	return true
 }
 
-// jsxSpace skips whitespace and comments inside of a tag.
-func (lx *erdeLexer) jsxSpace() {
+// markupSpace skips whitespace and comments inside of a tag.
+func (lx *erdeLexer) markupSpace() {
 	for !lx.eof() {
 		switch c := lx.peek(0); {
 		case c == '\n':
@@ -88,141 +88,141 @@ func (lx *erdeLexer) jsxSpace() {
 	}
 }
 
-func (lx *erdeLexer) jsxName() {
-	if !isJsxNameHead(lx.peek(0)) {
-		lx.jsxUnexpected("name")
+func (lx *erdeLexer) markupName() {
+	if !isMarkupNameHead(lx.peek(0)) {
+		lx.markupUnexpected("name")
 	}
 	start := lx.pos
 	lx.pos++
-	for !lx.eof() && isJsxNameBody(lx.peek(0)) {
+	for !lx.eof() && isMarkupNameBody(lx.peek(0)) {
 		lx.pos++
 	}
-	lx.emit(erdeJsxName, lx.text[start:lx.pos], lx.line)
+	lx.emit(erdeMarkupName, lx.text[start:lx.pos], lx.line)
 }
 
-func (lx *erdeLexer) jsxUnexpected(expected string) {
+func (lx *erdeLexer) markupUnexpected(expected string) {
 	if lx.eof() {
-		lx.throwEOF("unterminated jsx element")
+		lx.throwEOF("unterminated markup element")
 	}
 	r, _ := utf8.DecodeRuneInString(lx.text[lx.pos:])
-	lx.throw(lx.line, "unexpected '%c' in jsx element (expected %s)", r, expected)
+	lx.throw(lx.line, "unexpected '%c' in markup element (expected %s)", r, expected)
 }
 
-// jsxElement lexes an element, starting at its `<`.
-func (lx *erdeLexer) jsxElement() {
-	lx.emit(erdeJsx, "<", lx.line)
+// markupElement lexes an element, starting at its `<`.
+func (lx *erdeLexer) markupElement() {
+	lx.emit(erdeMarkup, "<", lx.line)
 	lx.pos++
 
 	if lx.peek(0) == '>' { // fragment
-		lx.emit(erdeJsx, ">", lx.line)
+		lx.emit(erdeMarkup, ">", lx.line)
 		lx.pos++
-		lx.jsxChildren()
+		lx.markupChildren()
 		return
 	}
 
-	lx.jsxName()
+	lx.markupName()
 	tag := lx.tokens[len(lx.tokens)-1].Value
 
 	for {
-		lx.jsxSpace()
+		lx.markupSpace()
 
 		switch c := lx.peek(0); {
 		case c == '/' && lx.peek(1) == '>':
-			lx.emit(erdeJsx, "/>", lx.line)
+			lx.emit(erdeMarkup, "/>", lx.line)
 			lx.pos += 2
 			return
 		case c == '>':
-			lx.emit(erdeJsx, ">", lx.line)
+			lx.emit(erdeMarkup, ">", lx.line)
 			lx.pos++
-			if jsxRawTextTags[tag] {
-				lx.jsxRawText(tag)
+			if markupRawTextTags[tag] {
+				lx.markupRawText(tag)
 			}
-			lx.jsxChildren()
+			lx.markupChildren()
 			return
 		case c == '{': // spread
-			lx.jsxExpression()
-		case isJsxNameHead(c):
-			lx.jsxName()
-			lx.jsxSpace()
+			lx.markupExpression()
+		case isMarkupNameHead(c):
+			lx.markupName()
+			lx.markupSpace()
 			if lx.peek(0) != '=' {
 				continue
 			}
-			lx.emit(erdeJsx, "=", lx.line)
+			lx.emit(erdeMarkup, "=", lx.line)
 			lx.pos++
-			lx.jsxSpace()
+			lx.markupSpace()
 			switch lx.peek(0) {
 			case '"':
 				lx.doubleQuoteString()
 			case '\'':
 				lx.singleQuoteString()
 			case '{':
-				lx.jsxExpression()
+				lx.markupExpression()
 			default:
-				lx.jsxUnexpected("attribute value")
+				lx.markupUnexpected("attribute value")
 			}
 		default:
-			lx.jsxUnexpected("attribute, '>', or '/>'")
+			lx.markupUnexpected("attribute, '>', or '/>'")
 		}
 	}
 }
 
 // Like HTML, the content of these is text as is (no `{...}` expressions,
 // whitespace cleanup, or entities), so css / js can be written directly.
-var jsxRawTextTags = map[string]bool{"script": true, "style": true}
+var markupRawTextTags = map[string]bool{"script": true, "style": true}
 
-// jsxRawText lexes the content of a raw text element (see jsxRawTextTags), up
+// markupRawText lexes the content of a raw text element (see markupRawTextTags), up
 // to its closing tag.
-func (lx *erdeLexer) jsxRawText(tag string) {
+func (lx *erdeLexer) markupRawText(tag string) {
 	start, startLine := lx.pos, lx.line
 	end := strings.Index(lx.text[lx.pos:], "</"+tag)
 	if end < 0 {
-		lx.throwEOF("unterminated jsx element '<%s>'", tag)
+		lx.throwEOF("unterminated markup element '<%s>'", tag)
 	}
 	text := lx.text[start : start+end]
 	lx.pos += end
 	lx.line += strings.Count(text, "\n")
 	if strings.TrimSpace(text) != "" {
-		lx.emit(erdeJsxText, text, startLine)
+		lx.emit(erdeMarkupText, text, startLine)
 	}
 }
 
-// jsxChildren lexes an element's children, up to and including its closing
+// markupChildren lexes an element's children, up to and including its closing
 // tag.
-func (lx *erdeLexer) jsxChildren() {
+func (lx *erdeLexer) markupChildren() {
 	start, startLine := lx.pos, lx.line
 
 	flush := func() {
-		if text := jsxText(lx.text[start:lx.pos]); text != "" {
-			lx.emit(erdeJsxText, text, startLine)
+		if text := markupText(lx.text[start:lx.pos]); text != "" {
+			lx.emit(erdeMarkupText, text, startLine)
 		}
 	}
 
 	for {
 		switch c := lx.peek(0); {
 		case lx.eof():
-			lx.throwEOF("unterminated jsx element")
+			lx.throwEOF("unterminated markup element")
 		case c == '<' && lx.peek(1) == '/':
 			flush()
-			lx.emit(erdeJsx, "</", lx.line)
+			lx.emit(erdeMarkup, "</", lx.line)
 			lx.pos += 2
-			lx.jsxSpace()
+			lx.markupSpace()
 			if lx.peek(0) != '>' {
-				lx.jsxName()
-				lx.jsxSpace()
+				lx.markupName()
+				lx.markupSpace()
 			}
 			if lx.peek(0) != '>' {
-				lx.jsxUnexpected("'>'")
+				lx.markupUnexpected("'>'")
 			}
-			lx.emit(erdeJsx, ">", lx.line)
+			lx.emit(erdeMarkup, ">", lx.line)
 			lx.pos++
 			return
 		case c == '<':
 			flush()
-			lx.jsxElement()
+			lx.markupElement()
 			start, startLine = lx.pos, lx.line
 		case c == '{':
 			flush()
-			lx.jsxExpression()
+			lx.markupExpression()
 			start, startLine = lx.pos, lx.line
 		default:
 			if c == '\n' {
@@ -233,16 +233,16 @@ func (lx *erdeLexer) jsxChildren() {
 	}
 }
 
-// jsxExpression lexes a `{...}` expression (or spread) inside of an element.
-func (lx *erdeLexer) jsxExpression() {
-	lx.emit(erdeJsx, "{", lx.line)
+// markupExpression lexes a `{...}` expression (or spread) inside of an element.
+func (lx *erdeLexer) markupExpression() {
+	lx.emit(erdeMarkup, "{", lx.line)
 	lx.pos++
 
 	braceDepth := 0
 	for lx.peek(0) != '}' || braceDepth > 0 {
 		switch {
 		case lx.eof():
-			lx.throwEOF("unterminated jsx expression")
+			lx.throwEOF("unterminated markup expression")
 		case lx.peek(0) == '{':
 			braceDepth++
 			lx.emit(erdeSymbol, "{", lx.line)
@@ -256,13 +256,13 @@ func (lx *erdeLexer) jsxExpression() {
 		}
 	}
 
-	lx.emit(erdeJsx, "}", lx.line)
+	lx.emit(erdeMarkup, "}", lx.line)
 	lx.pos++
 }
 
-// jsxText cleans up the whitespace in text children the same way as JSX
+// markupText cleans up the whitespace in text children the same way as JSX
 // (Babel's cleanJSXElementLiteralChild) and decodes HTML entities.
-func jsxText(raw string) string {
+func markupText(raw string) string {
 	lines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
 
 	lastNonEmpty := 0
@@ -289,10 +289,10 @@ func jsxText(raw string) string {
 		}
 	}
 
-	return jsxDecodeEntities(b.String())
+	return markupDecodeEntities(b.String())
 }
 
-var jsxEntities = map[string]string{
+var markupEntities = map[string]string{
 	"amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
 	"copy": "©", "reg": "®", "trade": "™", "hellip": "…", "mdash": "—",
 	"ndash": "–", "lsquo": "‘", "rsquo": "’", "ldquo": "“", "rdquo": "”",
@@ -300,9 +300,9 @@ var jsxEntities = map[string]string{
 	"uarr": "↑", "darr": "↓", "lbrace": "{", "rbrace": "}",
 }
 
-// jsxDecodeEntities decodes named (see jsxEntities) and numeric HTML entities.
+// markupDecodeEntities decodes named (see markupEntities) and numeric HTML entities.
 // Anything else is left as is.
-func jsxDecodeEntities(s string) string {
+func markupDecodeEntities(s string) string {
 	if !strings.Contains(s, "&") {
 		return s
 	}
@@ -319,7 +319,7 @@ func jsxDecodeEntities(s string) string {
 
 		semi := strings.IndexByte(s, ';')
 		if semi > 1 && semi < 12 {
-			if decoded, ok := jsxDecodeEntity(s[1:semi]); ok {
+			if decoded, ok := markupDecodeEntity(s[1:semi]); ok {
 				b.WriteString(decoded)
 				s = s[semi+1:]
 				continue
@@ -330,9 +330,9 @@ func jsxDecodeEntities(s string) string {
 	}
 }
 
-func jsxDecodeEntity(name string) (string, bool) {
+func markupDecodeEntity(name string) (string, bool) {
 	if !strings.HasPrefix(name, "#") {
-		decoded, ok := jsxEntities[name]
+		decoded, ok := markupEntities[name]
 		return decoded, ok
 	}
 
@@ -353,34 +353,34 @@ func jsxDecodeEntity(name string) (string, bool) {
 
 /* Parser {{{ */
 
-func (p *erdeParser) isJsx(value string) bool {
-	return p.cur.Type == erdeJsx && p.cur.Value == value
+func (p *erdeParser) isMarkup(value string) bool {
+	return p.cur.Type == erdeMarkup && p.cur.Value == value
 }
 
-func (p *erdeParser) expectJsx(value string) {
+func (p *erdeParser) expectMarkup(value string) {
 	if p.cur.Type == erdeEOF {
 		p.throwEOF("unexpected eof (expected %s)", value)
 	}
-	if !p.isJsx(value) {
+	if !p.isMarkup(value) {
 		p.throw(p.cur.Line, "expected '%s' got '%s'", value, p.cur.Value)
 	}
 	p.consume()
 }
 
-// jsxFactory returns the function elements are lowered to: JSXFactory if set,
-// otherwise `h` if it's declared, otherwise `require('erde.jsx').h` (the
+// markupFactory returns the function elements are lowered to: MarkupFactory if set,
+// otherwise `h` if it's declared, otherwise `require('erde.markup').h` (the
 // "automatic runtime", imported once at the top of the chunk, see
-// jsxRuntimeImport).
-func (p *erdeParser) jsxFactory(line int) ast.Expr {
-	name := p.opts.JSXFactory
+// markupRuntimeImport).
+func (p *erdeParser) markupFactory(line int) ast.Expr {
+	name := p.opts.MarkupFactory
 	if name == "" {
 		if p.lookup("h") != "" {
 			return p.resolve("h", line)
 		}
-		if p.jsxRuntime == "" {
-			p.jsxRuntime = p.newTmpName()
+		if p.markupRuntime == "" {
+			p.markupRuntime = p.newTmpName()
 		}
-		return erdeIdent(p.jsxRuntime, line)
+		return erdeIdent(p.markupRuntime, line)
 	}
 	parts := strings.Split(name, ".")
 	expr := p.resolve(parts[0], line)
@@ -390,18 +390,18 @@ func (p *erdeParser) jsxFactory(line int) ast.Expr {
 	return expr
 }
 
-// JSXRuntimeModule is the module the automatic jsx factory is imported from.
-const JSXRuntimeModule = "erde.jsx"
+// MarkupRuntimeModule is the module the automatic markup factory is imported from.
+const MarkupRuntimeModule = "erde.markup"
 
-// jsxRuntimeImport is `local <jsxRuntime> = require('erde.jsx').h`.
-func (p *erdeParser) jsxRuntimeImport() ast.Stmt {
-	runtime := erdeCall(erdeIdent("require", 1), []ast.Expr{erdeString(JSXRuntimeModule, 1)}, 1)
-	return erdeLocal([]string{p.jsxRuntime}, []ast.Expr{erdeAttr(runtime, erdeString("h", 1), 1)}, 1)
+// markupRuntimeImport is `local <markupRuntime> = require('erde.markup').h`.
+func (p *erdeParser) markupRuntimeImport() ast.Stmt {
+	runtime := erdeCall(erdeIdent("require", 1), []ast.Expr{erdeString(MarkupRuntimeModule, 1)}, 1)
+	return erdeLocal([]string{p.markupRuntime}, []ast.Expr{erdeAttr(runtime, erdeString("h", 1), 1)}, 1)
 }
 
-// jsxTag returns the expression for a tag name: a string for HTML elements
+// markupTag returns the expression for a tag name: a string for HTML elements
 // (lowercase, or containing `-` / `:`), otherwise a (dotted) name.
-func (p *erdeParser) jsxTag(name string, line int) ast.Expr {
+func (p *erdeParser) markupTag(name string, line int) ast.Expr {
 	if strings.Contains(name, ".") {
 		parts := strings.Split(name, ".")
 		expr := p.resolve(parts[0], line)
@@ -416,34 +416,34 @@ func (p *erdeParser) jsxTag(name string, line int) ast.Expr {
 	return p.resolve(name, line)
 }
 
-func (p *erdeParser) jsxElement() ast.Expr {
+func (p *erdeParser) markupElement() ast.Expr {
 	line := p.cur.Line
-	p.expectJsx("<")
+	p.expectMarkup("<")
 
-	if p.isJsx(">") { // fragment
+	if p.isMarkup(">") { // fragment
 		p.consume()
-		children := p.jsxChildren("", line)
+		children := p.markupChildren("", line)
 		args := append([]ast.Expr{erdeLine(&ast.NilExpr{}, line), erdeLine(&ast.NilExpr{}, line)}, children...)
-		return erdeCall(p.jsxFactory(line), args, line)
+		return erdeCall(p.markupFactory(line), args, line)
 	}
 
 	name := p.consume()
-	args := []ast.Expr{p.jsxTag(name, line), p.jsxAttributes(line)}
+	args := []ast.Expr{p.markupTag(name, line), p.markupAttributes(line)}
 
-	if p.isJsx("/>") {
+	if p.isMarkup("/>") {
 		p.consume()
 	} else {
-		p.expectJsx(">")
-		args = append(args, p.jsxChildren(name, line)...)
+		p.expectMarkup(">")
+		args = append(args, p.markupChildren(name, line)...)
 	}
 
-	return erdeCall(p.jsxFactory(line), args, line)
+	return erdeCall(p.markupFactory(line), args, line)
 }
 
-// jsxAttributes parses an opening tag's attributes into the props
+// markupAttributes parses an opening tag's attributes into the props
 // expression: nil when there are none, a table constructor, or (when there
 // are spreads) a function call that merges them in order.
-func (p *erdeParser) jsxAttributes(line int) ast.Expr {
+func (p *erdeParser) markupAttributes(line int) ast.Expr {
 	type attribute struct {
 		field  *ast.Field
 		spread ast.Expr
@@ -451,37 +451,37 @@ func (p *erdeParser) jsxAttributes(line int) ast.Expr {
 	attrs := []attribute{}
 	hasSpread := false
 
-	for !p.isJsx(">") && !p.isJsx("/>") {
+	for !p.isMarkup(">") && !p.isMarkup("/>") {
 		attrLine := p.cur.Line
 
-		if p.isJsx("{") {
+		if p.isMarkup("{") {
 			p.consume()
 			p.expect("...")
 			spread := p.expression(1)
-			p.expectJsx("}")
+			p.expectMarkup("}")
 			attrs = append(attrs, attribute{spread: spread})
 			hasSpread = true
 			continue
 		}
 
-		if p.cur.Type != erdeJsxName {
-			p.throw(attrLine, "unexpected token '%s' in jsx element", p.cur.Value)
+		if p.cur.Type != erdeMarkupName {
+			p.throw(attrLine, "unexpected token '%s' in markup element", p.cur.Value)
 		}
 		key := erdeString(p.consume(), attrLine)
 
 		var value ast.Expr = erdeLine(&ast.TrueExpr{}, attrLine)
-		if p.isJsx("=") {
+		if p.isMarkup("=") {
 			p.consume()
 			switch {
 			case p.cur.Type == erdeSingleQuote || p.cur.Type == erdeDoubleQuote:
 				value = p.stringExpr()
-			case p.isJsx("{"):
+			case p.isMarkup("{"):
 				p.consume()
-				if p.isJsx("}") {
-					p.throw(attrLine, "jsx attribute value can't be empty")
+				if p.isMarkup("}") {
+					p.throw(attrLine, "markup attribute value can't be empty")
 				}
-				value = p.jsxValue(p.expression(1))
-				p.expectJsx("}")
+				value = p.markupValue(p.expression(1))
+				p.expectMarkup("}")
 			}
 		}
 
@@ -523,46 +523,46 @@ func (p *erdeParser) jsxAttributes(line int) ast.Expr {
 	return erdeCall(fn, []ast.Expr{}, line)
 }
 
-// jsxChildren parses an element's children, up to and including the closing
+// markupChildren parses an element's children, up to and including the closing
 // tag (which must match `name`).
-func (p *erdeParser) jsxChildren(name string, line int) []ast.Expr {
+func (p *erdeParser) markupChildren(name string, line int) []ast.Expr {
 	children := []ast.Expr{}
 
 	for {
 		switch {
-		case p.cur.Type == erdeJsxText:
+		case p.cur.Type == erdeMarkupText:
 			children = append(children, erdeString(p.cur.Value, p.cur.Line))
 			p.consume()
-		case p.isJsx("<"):
-			children = append(children, p.jsxElement())
-		case p.isJsx("{"):
+		case p.isMarkup("<"):
+			children = append(children, p.markupElement())
+		case p.isMarkup("{"):
 			p.consume()
-			if !p.isJsx("}") { // `{}` / `{--[[ comment ]]}` are ignored
-				children = append(children, p.jsxValue(p.expression(1)))
+			if !p.isMarkup("}") { // `{}` / `{--[[ comment ]]}` are ignored
+				children = append(children, p.markupValue(p.expression(1)))
 			}
-			p.expectJsx("}")
-		case p.isJsx("</"):
+			p.expectMarkup("}")
+		case p.isMarkup("</"):
 			closeLine := p.cur.Line
 			p.consume()
 			closing := ""
-			if p.cur.Type == erdeJsxName {
+			if p.cur.Type == erdeMarkupName {
 				closing = p.consume()
 			}
 			if closing != name {
 				p.throw(closeLine, "expected closing tag '</%s>' (for line %d) got '</%s>'", name, line, closing)
 			}
-			p.expectJsx(">")
+			p.expectMarkup(">")
 			return children
 		case p.cur.Type == erdeEOF:
-			p.throwEOF("unterminated jsx element '<%s>'", name)
+			p.throwEOF("unterminated markup element '<%s>'", name)
 		default:
-			p.throw(p.cur.Line, "unexpected token '%s' in jsx element", p.cur.Value)
+			p.throw(p.cur.Line, "unexpected token '%s' in markup element", p.cur.Value)
 		}
 	}
 }
 
-// jsxValue truncates multiple values to one (same as parentheses).
-func (p *erdeParser) jsxValue(expr ast.Expr) ast.Expr {
+// markupValue truncates multiple values to one (same as parentheses).
+func (p *erdeParser) markupValue(expr ast.Expr) ast.Expr {
 	switch ex := expr.(type) {
 	case *ast.FuncCallExpr:
 		ex.AdjustRet = true

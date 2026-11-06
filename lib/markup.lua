@@ -1,8 +1,8 @@
--- erde.jsx: runtime for go-erde's `jsx` experiment (`erde -X jsx`).
+-- erde.markup: runtime for go-erde's `markup` experiment (`erde -X markup`).
 --
 -- Elements are lowered to calls of `h(tag, props, ...children)`:
 --
---   local { h, render } = require('erde.jsx')
+--   local { h, render } = require('erde.markup')
 --   print(render(<p class="greeting">hello {name}!</p>))
 --
 -- `h` builds a tree of nodes, which `render` turns into an HTML string. Text
@@ -67,7 +67,7 @@ function M.h(tag, props, ...)
     return setmetatable({ component = tag, props = props }, Node)
   end
 
-  error('jsx: invalid element type (' .. type(tag) .. ')', 2)
+  error('markup: invalid element type (' .. type(tag) .. ')', 2)
 end
 
 -- raw(html) marks a string as trusted HTML, which is rendered as is.
@@ -125,7 +125,7 @@ end
 -- id of the component they're in and their position in it (ex. `r:1.2:3#1`),
 -- so they don't change when other components do.
 local actions = {}
-local mounted -- { root = fn, rpc = url, state = id, morph = url }
+local mounted -- { root = fn, rpc = url, headers = {}, morph = { inline | src } | false }
 
 -- `onclick`, `onClick`, and `on:click` are all `click`.
 local function eventName(key)
@@ -230,7 +230,7 @@ local function renderElement(buf, node, path, owners)
   if VOID[tag] then
     for _, child in ipairs(node.children) do
       if child ~= false and child ~= true then
-        error('jsx: <' .. tag .. '> can\'t have children', 0)
+        error('markup: <' .. tag .. '> can\'t have children', 0)
       end
     end
     return
@@ -313,7 +313,7 @@ function renderTo(buf, node, rawText, path, owners)
   elseif t == 'function' then -- lazy child
     renderTo(buf, node(), rawText, path, owners)
   else
-    error('jsx: can\'t render a ' .. t, 0)
+    error('markup: can\'t render a ' .. t, 0)
   end
 end
 
@@ -368,7 +368,7 @@ end
 --   }
 function M.state(init)
   if not current then
-    error('jsx: state must be called while rendering a component', 2)
+    error('markup: state must be called while rendering a component', 2)
   end
   current.hook = current.hook + 1
   local hooks = current.instance.hooks
@@ -379,18 +379,127 @@ function M.state(init)
     end
     value = init == nil and {} or init
     if type(value) ~= 'table' then
-      error('jsx: state must be a table (got ' .. type(value) .. ')', 2)
+      error('markup: state must be a table (got ' .. type(value) .. ')', 2)
     end
     hooks[current.hook] = value
   end
   return value
 end
 
+-- Scoped styles. `css(rules)` turns lua tables into css, w/ class names
+-- generated from a hash of the rules (so they're the same everywhere the rules
+-- are), and returns them by name:
+--
+--   local s = css({
+--     card = {
+--       padding = '1rem',
+--       backgroundColor = '#222',        -- (or background_color)
+--       ['&:hover'] = { borderColor = 'gold' }, -- `&` is the class
+--       ['$title'] = { margin = 0 },     -- `$name` is another class here
+--       ['img'] = { width = '100%' },    -- descendants
+--       ['@media (max-width: 600px)'] = { padding = '.5rem' },
+--     },
+--     title = { color = 'gold' },
+--   })
+--   <section class={s.card}><h2 class={s.title}>hi</h2></section>
+--
+-- `document` includes all the styles (in a <style> in the <head>, which is
+-- added to an <html> w/o one, or at the start), and `styles()` returns them, to put them somewhere else (ex. in a
+-- shadow root).
+
+local sheets = {} -- css text of each `css` call (in order, no duplicates)
+local sheetHashes = {}
+local sentSheets = 0 -- sheets in the last document of the mounted page
+
+local BASE36 = '0123456789abcdefghijklmnopqrstuvwxyz'
+local function hash(s)
+  local h = 5381
+  for i = 1, #s do
+    h = (h * 33 + s:byte(i)) % 4294967296
+  end
+  local out = ''
+  repeat
+    local digit = h % 36
+    out = BASE36:sub(digit + 1, digit + 1) .. out
+    h = (h - digit) / 36
+  until h == 0
+  return out
+end
+
+-- fontSize / font_size -> font-size
+local function property(name)
+  return (name:gsub('_', '-'):gsub('(%l)(%u)', function(a, b)
+    return a .. '-' .. b:lower()
+  end))
+end
+
+-- Generated class names end w/ HASH until the hash (of the css w/ them) is
+-- known. (Not \0, lua 5.1 patterns can't have it.)
+local HASH = '\1'
+
+local function cssRule(selector, rules, out)
+  local declarations, nested = {}, {}
+  for _, key in ipairs(sortedKeys(rules)) do
+    local value = rules[key]
+    if type(value) == 'table' then
+      nested[#nested + 1] = key
+    else
+      declarations[#declarations + 1] = property(key) .. ': ' .. tostring(value) .. ';'
+    end
+  end
+  if #declarations > 0 then
+    out[#out + 1] = selector .. ' { ' .. table.concat(declarations, ' ') .. ' }'
+  end
+
+  for _, key in ipairs(nested) do
+    local refs = key:gsub('%$([%w_]+)', '.%1-' .. HASH)
+    if key:sub(1, 1) == '@' then
+      local inner = {}
+      cssRule(selector, rules[key], inner)
+      out[#out + 1] = key .. ' { ' .. table.concat(inner, ' ') .. ' }'
+    elseif refs:find('&', 1, true) then
+      cssRule((refs:gsub('&', function() return selector end)), rules[key], out)
+    else
+      cssRule(selector .. ' ' .. refs, rules[key], out)
+    end
+  end
+end
+
+function M.css(rules)
+  assert(type(rules) == 'table', 'markup: css requires a table of rules, by class name')
+  local out = {}
+  for _, name in ipairs(sortedKeys(rules)) do
+    assert(type(rules[name]) == 'table', 'markup: css rules for ' .. name .. ' must be a table')
+    cssRule('.' .. name .. '-' .. HASH, rules[name], out)
+  end
+  local text = table.concat(out, '\n')
+  local h = hash(text)
+
+  if not sheetHashes[h] then
+    sheetHashes[h] = true
+    sheets[#sheets + 1] = (text:gsub(HASH, h))
+  end
+
+  local names = {}
+  for _, name in ipairs(sortedKeys(rules)) do
+    names[name] = name .. '-' .. h
+  end
+  return names
+end
+
+-- styles() returns all the styles from `css`, as a <style> (or '' if none).
+function M.styles()
+  if #sheets == 0 then
+    return ''
+  end
+  return '<style data-erde-css>\n' .. table.concat(sheets, '\n') .. '\n</style>'
+end
+
 -- Client side of actions: calls the rpc endpoint w/ the action id and a
 -- summary of the event, then updates the page w/ the response (see
 -- `dispatch`): each `<template data-erde-target="id">` replaces the component
 -- w/ that id, otherwise it's the whole page. Updates are morphed (w/
--- idiomorph, see MORPH), or swapped if it isn't loaded. Calls are queued, so
+-- idiomorph, see `mount`), or swapped if it isn't loaded. Calls are queued, so
 -- they run in order. If the server state is gone (ex. after a restart), or the
 -- page is out of sync, it reloads.
 local CLIENT = [[
@@ -448,8 +557,18 @@ local CLIENT = [[
 })()
 ]]
 
--- https://github.com/bigskysoftware/idiomorph
-local MORPH = 'https://unpkg.com/idiomorph@0.8.0/dist/idiomorph.min.js'
+-- idiomorph (https://github.com/bigskysoftware/idiomorph) is vendored as
+-- `erde.markup.idiomorph` (go-erde preloads it, elsewhere put it next to this
+-- file). If it's missing, it's loaded from a cdn instead.
+local MORPH_CDN = 'https://unpkg.com/idiomorph@0.8.0/dist/idiomorph.min.js'
+
+local function vendoredMorph()
+  local ok, source = pcall(require, 'erde.markup.idiomorph')
+  if ok and type(source) == 'string' then
+    return { inline = source }
+  end
+  return { src = MORPH_CDN }
+end
 
 
 -- mount(root, { rpc, headers, morph }) renders `root()` as the page, and
@@ -457,17 +576,22 @@ local MORPH = 'https://unpkg.com/idiomorph@0.8.0/dist/idiomorph.min.js'
 -- and clicking (etc.) POSTs `{ id, data }` (json) to the `rpc` url, which
 -- should respond w/ `dispatch(id, data)` (what changed on the page).
 -- `headers` are sent along (ex. to find this page's state on the server). A
--- 410 (gone) response reloads the page. `morph` is the url of idiomorph
--- (default from unpkg), or false to swap elements instead.
+-- 410 (gone) response reloads the page. `morph` is how updates are applied:
+-- by default w/ idiomorph (inlined in the page, see `vendoredMorph`), a url
+-- to load it from instead, or false to swap elements (loses focus, etc.).
 --
 -- The host has to keep this lua state alive between the page and its actions
 -- (ex. a rest `page` handler, which does all of this for you).
 function M.mount(root, opts)
   opts = opts or {}
-  assert(type(root) == 'function', 'jsx: mount requires a function')
-  assert(opts.rpc, 'jsx: mount requires an rpc url (ex. { rpc = "/actions" })')
+  assert(type(root) == 'function', 'markup: mount requires a function')
+  assert(opts.rpc, 'markup: mount requires an rpc url (ex. { rpc = "/actions" })')
   local morph = opts.morph
-  if morph == nil then morph = MORPH end
+  if morph == nil then
+    morph = vendoredMorph()
+  elseif type(morph) == 'string' then
+    morph = { src = morph }
+  end
   mounted = { root = root, rpc = opts.rpc, headers = opts.headers or {}, morph = morph }
   return root()
 end
@@ -527,17 +651,18 @@ end
 -- or the whole page when something outside of a component (with its own root
 -- element) changed. Nothing changed is an empty body.
 function M.dispatch(id, data)
-  assert(mounted, 'jsx: dispatch requires a mounted page (see mount)')
+  assert(mounted, 'markup: dispatch requires a mounted page (see mount)')
   local action = actions[id]
   if not action then
-    error('jsx: unknown action ' .. tostring(id), 0)
+    error('markup: unknown action ' .. tostring(id), 0)
   end
 
-  local before = lastRender
+  local before, sent = lastRender, sentSheets
   action(data or {})
   local page = M.document(mounted.root())
 
-  local body = before and changed(before, lastRender) or page
+  -- new styles (from `css` calls the page hasn't seen) need the whole page
+  local body = before and #sheets == sent and changed(before, lastRender) or page
   return { headers = { ['Content-Type'] = 'text/html; charset=utf-8' }, body = body }
 end
 
@@ -551,7 +676,23 @@ end
 -- document(node) is like render, but prefixed w/ `<!DOCTYPE html>`. For a
 -- mounted page w/ actions, it includes the client script.
 function M.document(node)
-  local html = '<!DOCTYPE html>' .. M.render(node)
+  local html = M.render(node)
+  local styles = M.styles()
+  if styles ~= '' then
+    local headEnd = html:find('</head>', 1, true)
+    local _, htmlStart = html:find('^%s*<html[^>]*>')
+    if headEnd then
+      html = html:sub(1, headEnd - 1) .. styles .. html:sub(headEnd)
+    elseif htmlStart then -- <html> w/o a <head>
+      html = html:sub(1, htmlStart) .. '<head>' .. styles .. '</head>' .. html:sub(htmlStart + 1)
+    else
+      html = styles .. html
+    end
+  end
+  html = '<!DOCTYPE html>' .. html
+  if mounted then
+    sentSheets = #sheets
+  end
   if not M.isInteractive() then
     return html
   end
@@ -562,8 +703,10 @@ function M.document(node)
   end
   local cfg = '{ rpc: ' .. jsString(mounted.rpc) .. ', headers: { ' .. table.concat(headers, ', ') .. ' } }'
   local script = '<script>' .. CLIENT:format(cfg) .. '</script>'
-  if mounted.morph then
-    script = '<script src="' .. escape(mounted.morph) .. '"></script>' .. script
+  if mounted.morph and mounted.morph.src then
+    script = '<script src="' .. escape(mounted.morph.src) .. '"></script>' .. script
+  elseif mounted.morph then
+    script = '<script>' .. mounted.morph.inline .. '</script>' .. script
   end
   local bodyEnd = html:find('</body>[^<]*$') or html:find('</html>[^<]*$')
   if bodyEnd then

@@ -153,7 +153,7 @@ func isValue(t *token) bool {
 		return false
 	}
 	switch t.Kind {
-	case parse.RawNumber, parse.RawString, parse.RawJSX:
+	case parse.RawNumber, parse.RawString, parse.RawMarkup:
 		return true
 	case parse.RawWord:
 		return !keywords[t.Text]

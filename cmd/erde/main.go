@@ -285,8 +285,8 @@ func loadline(rl *readline.Instance, L *lua.LState, isErde bool) (*lua.LFunction
 	}
 }
 
-// experimentsFlag is the -X flag, which may be repeated (`-X match -X jsx` is
-// the same as `-X match,jsx`).
+// experimentsFlag is the -X flag, which may be repeated (`-X match -X markup` is
+// the same as `-X match,markup`).
 type experimentsFlag string
 
 func (f *experimentsFlag) String() string { return string(*f) }

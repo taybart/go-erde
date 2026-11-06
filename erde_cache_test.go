@@ -26,15 +26,15 @@ func TestCompiledFileCache(t *testing.T) {
 		return L, L.DoString(`m = require('mod')`)
 	}
 
-	jsx := parse.ErdeOptions{JSX: true}
+	markup := parse.ErdeOptions{Markup: true}
 	write("local t = { n = 1, el = tostring(<b/>) }\nreturn t", time.Unix(1000, 0))
 
-	a, err := load(jsx)
+	a, err := load(markup)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err := load(jsx)
+	b, err := load(markup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestCompiledFileCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// the erde options are part of the key (w/o jsx, it doesn't parse)
+	// the erde options are part of the key (w/o markup, it doesn't parse)
 	if c, err := load(parse.ErdeOptions{}); err == nil {
 		c.Close()
 		t.Error("used code compiled w/ other erde options")
@@ -60,7 +60,7 @@ func TestCompiledFileCache(t *testing.T) {
 
 	// a changed file is compiled again
 	write("return { n = 3 }", time.Unix(2000, 0))
-	d, err := load(jsx)
+	d, err := load(markup)
 	if err != nil {
 		t.Fatal(err)
 	}
