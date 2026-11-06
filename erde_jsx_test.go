@@ -46,7 +46,12 @@ var erdeJSXCases = []struct {
 	// escaping
 	{`local s = '<script>"&\'</script>'; return render(<p title={s}>{s}</p>)`, `<p title="&lt;script&gt;&quot;&amp;&#39;&lt;/script&gt;">&lt;script&gt;&quot;&amp;&#39;&lt;/script&gt;</p>`},
 	{`return render(<p>{raw('<b>trusted</b>')}</p>)`, `<p><b>trusted</b></p>`},
-	{`return render(<script>{'if (a < b) {}'}</script>)`, `<script>if (a < b) {}</script>`},
+	{`return render(<script>{'if (a < b) {}'}</script>)`, `<script>{'if (a < b) {}'}</script>`}, // literal, not an expression
+	// script / style content is raw text (like HTML)
+	{"return render(<style>\n  html, body { color: #fff; }\n  a > b { x: y }\n</style>)", "<style>\n  html, body { color: #fff; }\n  a > b { x: y }\n</style>"},
+	{"return render(<script type=\"module\">\n  // it's js\n  if (a < b && c) { go(`${x}`) }\n</script>)", "<script type=\"module\">\n  // it's js\n  if (a < b && c) { go(`${x}`) }\n</script>"},
+	{"return render(<p><style>{</style>{1}</p>)", "<p><style>{</style>1</p>"},
+	{"return render(<style>  </style>)", "<style></style>"},
 	// fragments
 	{`return render(<>a<b/>c</>)`, `a<b></b>c`},
 	{`return render(<p><>{1}{2}</></p>)`, `<p>12</p>`},
@@ -229,5 +234,288 @@ func TestFormatErdeJSX(t *testing.T) {
 	}
 	if string(got) != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+// erdeJSXActionsPrelude finds action ids in rendered html (in order).
+const erdeJSXActionsPrelude = `local jsx = require('erde.jsx')
+local { state, render } = jsx
+local ids = (html) -> {
+  local out = {}
+  for id in html:gmatch("erde%.rpc%('([^']+)'") { table.insert(out, id) }
+  return out
+}
+`
+
+// mount registers `on*` functions as actions, and dispatch runs them.
+func TestErdeJSXActions(t *testing.T) {
+	L := NewState(Options{Erde: erdeJSXOptions})
+	defer L.Close()
+
+	source := erdeJSXActionsPrelude + `local count, last = 0, nil
+local App = () -> <main>
+  <button onclick={() -> { count += 1 }} on:dblclick={e -> { last = e.type }}>{count}</button>
+  <p onClick={'not a function'}>{last}</p>
+</main>
+local root = () -> <App/>
+local page = jsx.document(jsx.mount(root, { rpc = '/rpc', headers = { ['X-B'] = 's"1', ['X-A'] = 'a' } }))
+local [dbl, click] = ids(page)
+jsx.dispatch(click, {})
+jsx.dispatch(click)
+jsx.dispatch(dbl, { type = 'dblclick' })
+local res = jsx.dispatch(click)
+local ok, err = pcall(jsx.dispatch, 'nope')
+return page, res.body, res.headers['Content-Type'], dbl .. ' ' .. click, err`
+	if err := L.DoErdeString(source); err != nil {
+		t.Fatal(err)
+	}
+
+	page, body, contentType, ids, err := L.Get(-5).String(), L.Get(-4).String(), L.Get(-3).String(), L.Get(-2).String(), L.Get(-1).String()
+	// attributes render sorted, so `on:dblclick` is #1 and `onclick` is #2
+	if ids != "r:1#1 r:1#2" {
+		t.Errorf("action ids: %q", ids)
+	}
+	wantButton := `<button ondblclick="erde.rpc('r:1#1', event)" onclick="erde.rpc('r:1#2', event)">0</button>`
+	for _, want := range []string{wantButton, `<main data-erde="r:1">`, `<p onClick="not a function"></p>`, "<script>", `headers: { 'X-A': 'a', 'X-B': 's\u00221' }`, "</main><script"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page missing %q\n%s", want, page)
+		}
+	}
+	// App is the only component, so it's what changed
+	if want := `<template data-erde-target="r:1"><main data-erde="r:1">`; !strings.HasPrefix(body, want) || !strings.Contains(body, ">3</button><p onClick=\"not a function\">dblclick</p></main></template>") {
+		t.Errorf("dispatch body\n%s", body)
+	}
+	if contentType != "text/html; charset=utf-8" {
+		t.Errorf("content type %q", contentType)
+	}
+	if err != "jsx: unknown action nope" {
+		t.Errorf("got error %q", err)
+	}
+}
+
+// dispatch only sends the components whose own markup changed.
+func TestErdeJSXFragments(t *testing.T) {
+	L := NewState(Options{Erde: erdeJSXOptions})
+	defer L.Close()
+
+	source := erdeJSXActionsPrelude + `local title, note, outside = 'hi', 'n', 'o'
+local Counter = (props) -> {
+  local s = state({ count = props.start })
+  return <button onclick={() -> { s.count += 1 }}>{s.count}</button>
+}
+local Note = () -> <>{note}</> -- no root element of its own
+local Card = () -> <section><Note/><button onclick={() -> { note = 'N' }}>n</button></section>
+local App = () -> <main>
+  <h1>{title}</h1>
+  <Counter start={1}/>
+  <Counter start={10}/>
+  <Card/>
+  <button onclick={() -> { title = 'HI' }}>t</button>
+  <button onclick={() -> {}}>noop</button>
+  <button onclick={() -> { outside = 'O' }}>o</button>
+</main>
+local root = () -> <div>{outside}<App/></div>
+local page = jsx.document(jsx.mount(root, { rpc = '/rpc', morph = false }))
+local [a, b, n, t, noop, o] = ids(page)
+local out = {}
+for _, id in ipairs({ b, noop, n, t, a, o }) {
+  table.insert(out, jsx.dispatch(id).body)
+}
+return table.concat(out, '\n')`
+	if err := L.DoErdeString(source); err != nil {
+		t.Fatal(err)
+	}
+
+	bodies := strings.Split(L.Get(-1).String(), "\n")
+	cases := []struct {
+		name string
+		want string
+	}{
+		{"one counter", `<template data-erde-target="r.2:1.3:2"><button data-erde="r.2:1.3:2" onclick="erde.rpc('r.2:1.3:2#1', event)">11</button></template>`},
+		{"nothing changed", ``},
+		{"w/o a root element, its parent", `<template data-erde-target="r.2:1.4:3"><section data-erde="r.2:1.4:3">N<button onclick="erde.rpc('r.2:1.4:3#1', event)">n</button></section></template>`},
+		{"a parent covers its children", `<template data-erde-target="r.2:1"><main data-erde="r.2:1"><h1>HI</h1>`},
+		{"the other counter", `<template data-erde-target="r.2:1.2:2"><button data-erde="r.2:1.2:2" onclick="erde.rpc('r.2:1.2:2#1', event)">2</button></template>`},
+		{"outside of components, the whole page", `<!DOCTYPE html><div>O<main`},
+	}
+	for i, c := range cases {
+		if i >= len(bodies) {
+			t.Fatalf("missing body for %s", c.name)
+		}
+		if !strings.HasPrefix(bodies[i], c.want) || (c.want == "" && bodies[i] != "") {
+			t.Errorf("%s:\n  got  %s\n  want %s", c.name, bodies[i], c.want)
+		}
+		if i == 3 && strings.Count(bodies[i], "<template") != 1 {
+			t.Errorf("%s: expected one template\n%s", c.name, bodies[i])
+		}
+	}
+}
+
+// A component w/ a document root (ex. <html>) can't be sent on its own.
+func TestErdeJSXFragmentsDocument(t *testing.T) {
+	L := NewState(Options{Erde: erdeJSXOptions})
+	defer L.Close()
+	source := erdeJSXActionsPrelude + `local x = 1
+local App = () -> <html><body><button onclick={() -> { x += 1 }}>{x}</button></body></html>
+local page = jsx.document(jsx.mount(() -> <App/>, { rpc = '/rpc', morph = false }))
+return jsx.dispatch(ids(page)[1]).body`
+	if err := L.DoErdeString(source); err != nil {
+		t.Fatal(err)
+	}
+	if got := L.Get(-1).String(); !strings.HasPrefix(got, "<!DOCTYPE html><html") || !strings.Contains(got, ">2</button>") {
+		t.Errorf("got\n%s", got)
+	}
+}
+
+// Without mount, functions in attributes are skipped (plain server rendering).
+func TestErdeJSXActionsUnmounted(t *testing.T) {
+	L := NewState(Options{Erde: erdeJSXOptions})
+	defer L.Close()
+	if err := L.DoErdeString(`return require('erde.jsx').document(<b onclick={() -> 1}/>)`); err != nil {
+		t.Fatal(err)
+	}
+	if got := L.Get(-1).String(); got != "<!DOCTYPE html><b></b>" {
+		t.Errorf("got %s", got)
+	}
+}
+
+// state is kept per component instance (by position in the tree, or `key`).
+func TestErdeJSXState(t *testing.T) {
+	L := NewState(Options{Erde: erdeJSXOptions})
+	defer L.Close()
+
+	source := erdeJSXActionsPrelude + `local show, items, order = false, { 'x', 'y' }, {}
+
+local Counter = (props) -> {
+  local s = state({ count = props.start || 0 })
+  local calls = state(() -> ({ n = 0 }))
+  calls.n += 1
+  table.insert(order, props.name)
+  return <button onclick={() -> { s.count += 1 }}>{props.name}={s.count}</button>
+}
+local Badge = () -> <i>badge</i>
+local Item = (props) -> {
+  local s = state({ clicks = 0 })
+  return <li onclick={() -> { s.clicks += 1 }}>{props.name}:{s.clicks}</li>
+}
+local App = () -> {
+  table.insert(order, 'App')
+  return <main>
+    {show && <Badge/>}
+    <Counter name="a"/>
+    <Counter name="b" start={10}/>
+    <ul>{jsx.map(items, it -> <Item key={it} name={it}/>)}</ul>
+  </main>
+}
+
+local root = () -> <App/>
+local out = {}
+jsx.mount(root, { rpc = '/rpc', morph = false })
+local page = render(root())
+table.insert(out, page)
+local [a, b, x, y] = ids(page)
+jsx.dispatch(b)                      -- b += 1
+jsx.dispatch(b)                      -- b += 1
+show = true                          -- a conditional sibling doesn't move state
+jsx.dispatch(a)                      -- a += 1
+jsx.dispatch(y)                      -- y += 1
+items = { 'y', 'x' }                 -- keys keep item state when reordering
+table.insert(out, render(root()))
+items = { 'x' }                      -- y is gone, so is its state
+render(root())
+items = { 'x', 'y' }
+table.insert(out, render(root()))
+return table.concat(out, '\n'), table.concat(order, ' ', 1, 3)`
+	if err := L.DoErdeString(source); err != nil {
+		t.Fatal(err)
+	}
+
+	renders := strings.Split(L.Get(-2).String(), "\n")
+	strip := func(s string) string { // just the text
+		var b strings.Builder
+		in := false
+		for _, c := range s {
+			switch {
+			case c == '<':
+				in = true
+			case c == '>':
+				in = false
+				b.WriteByte(' ')
+			case !in:
+				b.WriteRune(c)
+			}
+		}
+		return strings.Join(strings.Fields(b.String()), " ")
+	}
+	want := []string{
+		"a=0 b=10 x:0 y:0",
+		"badge a=1 b=12 y:1 x:0",
+		"badge a=1 b=12 x:0 y:0",
+	}
+	for i := range want {
+		if got := strip(renders[i]); got != want[i] {
+			t.Errorf("render %d: got %q, want %q\n%s", i, got, want[i], renders[i])
+		}
+	}
+	// components run top down (parents first)
+	if got := L.Get(-1).String(); got != "App a b" {
+		t.Errorf("render order: got %q", got)
+	}
+	// component roots are marked (for targeted updates)
+	if !strings.Contains(renders[0], `<main data-erde="r:`) || !strings.Contains(renders[0], `<li data-erde="r:1.4.1.kx:`) {
+		t.Errorf("missing data-erde\n%s", renders[0])
+	}
+
+	if err := L.DoErdeString(`require('erde.jsx').state({})`); err == nil || !strings.Contains(err.Error(), "while rendering a component") {
+		t.Errorf("got %v", err)
+	}
+}
+
+// `-X jsx=name` sets the factory.
+func TestErdeJSXFactoryOption(t *testing.T) {
+	var opts parse.ErdeOptions
+	if err := opts.Enable("match, jsx=harmony.ui.h"); err != nil {
+		t.Fatal(err)
+	}
+	if !opts.Match || !opts.JSX || opts.JSXFactory != "harmony.ui.h" {
+		t.Errorf("got %+v", opts)
+	}
+	for _, bad := range []string{"jsx=", "jsx=a..b", "jsx=1x", "jsx=a-b", "jsx=local", "match=1", "nope"} {
+		if err := (&parse.ErdeOptions{}).Enable(bad); err == nil {
+			t.Errorf("%q: expected an error", bad)
+		}
+	}
+}
+
+// A mounted page w/o actions is static: no client script.
+func TestErdeJSXStaticPage(t *testing.T) {
+	L := NewState(Options{Erde: erdeJSXOptions})
+	defer L.Close()
+	source := `local jsx = require('erde.jsx')
+local static = jsx.document(jsx.mount(() -> <p>hi</p>, { rpc = '/' }))
+local staticInteractive = jsx.isInteractive()
+local live = jsx.document(jsx.mount(() -> <b onclick={() -> {}}/>, { rpc = '/' }))
+return static, tostring(staticInteractive), tostring(jsx.isInteractive()), tostring(live:find('<script>', 1, true) != nil)`
+	if err := L.DoErdeString(source); err != nil {
+		t.Fatal(err)
+	}
+	if got := L.Get(-4).String(); got != "<!DOCTYPE html><p>hi</p>" {
+		t.Errorf("static page: %s", got)
+	}
+	if a, b, c := L.Get(-3).String(), L.Get(-2).String(), L.Get(-1).String(); a != "false" || b != "true" || c != "true" {
+		t.Errorf("interactive: %s %s, script: %s", a, b, c)
+	}
+}
+
+// The runtime's bytecode is shared, but each state gets its own module.
+func TestErdeJSXSharedRuntime(t *testing.T) {
+	a, b := NewState(), NewState()
+	defer a.Close()
+	defer b.Close()
+	if err := a.DoString(`require('erde.jsx').x = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.DoString(`assert(require('erde.jsx').x == nil, 'module shared between states')`); err != nil {
+		t.Fatal(err)
 	}
 }

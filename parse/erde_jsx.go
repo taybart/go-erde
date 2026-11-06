@@ -22,6 +22,10 @@ import (
 // the runtime library (`require('erde.jsx').h`), so components don't need any
 // imports (like JSX's automatic runtime).
 //
+// The content of <script> and <style> is raw text, like HTML (see
+// jsxRawTextTags), so `<style>a { color: red }</style>` is css, not an
+// expression.
+//
 // Lowercase tags (and tags w/ `-` or `:`) are strings, other tags are
 // expressions. Attribute strings are erde strings (so `class="btn {kind}"`
 // interpolates), an attribute w/o a value is `true`, and text is cleaned up
@@ -117,6 +121,7 @@ func (lx *erdeLexer) jsxElement() {
 	}
 
 	lx.jsxName()
+	tag := lx.tokens[len(lx.tokens)-1].Value
 
 	for {
 		lx.jsxSpace()
@@ -129,6 +134,9 @@ func (lx *erdeLexer) jsxElement() {
 		case c == '>':
 			lx.emit(erdeJsx, ">", lx.line)
 			lx.pos++
+			if jsxRawTextTags[tag] {
+				lx.jsxRawText(tag)
+			}
 			lx.jsxChildren()
 			return
 		case c == '{': // spread
@@ -155,6 +163,26 @@ func (lx *erdeLexer) jsxElement() {
 		default:
 			lx.jsxUnexpected("attribute, '>', or '/>'")
 		}
+	}
+}
+
+// Like HTML, the content of these is text as is (no `{...}` expressions,
+// whitespace cleanup, or entities), so css / js can be written directly.
+var jsxRawTextTags = map[string]bool{"script": true, "style": true}
+
+// jsxRawText lexes the content of a raw text element (see jsxRawTextTags), up
+// to its closing tag.
+func (lx *erdeLexer) jsxRawText(tag string) {
+	start, startLine := lx.pos, lx.line
+	end := strings.Index(lx.text[lx.pos:], "</"+tag)
+	if end < 0 {
+		lx.throwEOF("unterminated jsx element '<%s>'", tag)
+	}
+	text := lx.text[start : start+end]
+	lx.pos += end
+	lx.line += strings.Count(text, "\n")
+	if strings.TrimSpace(text) != "" {
+		lx.emit(erdeJsxText, text, startLine)
 	}
 }
 

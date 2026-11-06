@@ -42,22 +42,46 @@ type ErdeOptions struct {
 	JSXFactory string
 }
 
-// ErdeExperiments lists the experiment names accepted by Enable.
-var ErdeExperiments = []string{"match", "jsx"}
+// ErdeExperiments lists the experiments accepted by Enable.
+var ErdeExperiments = []string{"match", "jsx[=factory]"}
 
 // Enable turns on experiments by name, given as a comma separated list (ex.
-// from a command line flag).
+// from a command line flag). `jsx=name` also sets JSXFactory (ex.
+// `jsx=harmony.h`).
 func (o *ErdeOptions) Enable(names string) error {
 	for _, name := range strings.Split(names, ",") {
-		switch strings.TrimSpace(name) {
-		case "":
-		case "match":
+		name, value, hasValue := strings.Cut(strings.TrimSpace(name), "=")
+		switch {
+		case name == "" && !hasValue:
+		case name == "match" && !hasValue:
 			o.Match = true
-		case "jsx":
+		case name == "jsx":
 			o.JSX = true
+			if hasValue {
+				if !isDottedName(value) {
+					return fmt.Errorf("invalid jsx factory '%s' (expected a name, ex. h or jsx.h)", value)
+				}
+				o.JSXFactory = value
+			}
 		default:
 			return fmt.Errorf("unknown erde experiment '%s' (available: %s)", name, strings.Join(ErdeExperiments, ", "))
 		}
 	}
 	return nil
+}
+
+// isDottedName reports whether s is a name or a dotted chain of names (ex.
+// `jsx.h`).
+func isDottedName(s string) bool {
+	for _, part := range strings.Split(s, ".") {
+		if part == "" || erdeKeywords[part] || !isErdeWordHead(part[0]) {
+			return false
+		}
+		for i := 1; i < len(part); i++ {
+			if !isErdeWordBody(part[i]) {
+				return false
+			}
+		}
+	}
+	return true
 }

@@ -5,6 +5,10 @@ package lua
 
 import (
 	_ "embed"
+	"strings"
+	"sync"
+
+	"github.com/taybart/go-erde/parse"
 )
 
 // JSXLibName is the module name of the jsx runtime (`require('erde.jsx')`).
@@ -13,15 +17,35 @@ const JSXLibName = "erde.jsx"
 //go:embed lib/jsx.lua
 var JSXLibSource string
 
-// OpenJSX registers the jsx runtime in package.preload, so it's loaded (once)
-// by `require('erde.jsx')`.
+// The runtime is compiled once, and its (immutable) bytecode is shared by
+// every state that requires it.
+var jsxLib struct {
+	once  sync.Once
+	proto *FunctionProto
+	err   error
+}
+
+func jsxLibProto() (*FunctionProto, error) {
+	jsxLib.once.Do(func() {
+		chunk, err := parse.Parse(strings.NewReader(JSXLibSource), JSXLibName)
+		if err != nil {
+			jsxLib.err = err
+			return
+		}
+		jsxLib.proto, jsxLib.err = Compile(chunk, JSXLibName)
+	})
+	return jsxLib.proto, jsxLib.err
+}
+
+// OpenJSX registers the jsx runtime in package.preload, so it's loaded (once
+// per state) by `require('erde.jsx')`.
 func OpenJSX(L *LState) int {
 	L.PreloadModule(JSXLibName, func(L *LState) int {
-		fn, err := L.LoadString(JSXLibSource)
+		proto, err := jsxLibProto()
 		if err != nil {
 			L.RaiseError("%s", err.Error())
 		}
-		L.Push(fn)
+		L.Push(L.NewFunctionFromProto(proto))
 		L.Call(0, 1)
 		return 1
 	})
