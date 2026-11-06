@@ -30,6 +30,9 @@ Rules:
   shadow            a local that shadows another local
   redefined         a local declared twice in the same scope
   unreachable       code after return / break / continue / goto
+  fat-arrow-component
+                    a '=>' function that builds markup but doesn't use self
+                    (a component's props would be self, use '->')
   syntax            the file doesn't parse
 
 Add '` + lintIgnoreComment + `' in a comment to ignore a line.

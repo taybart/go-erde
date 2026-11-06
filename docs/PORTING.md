@@ -18,15 +18,18 @@ Compared to upstream gopher-lua:
 
 | | Files | Change |
 | --- | --- | --- |
-| **Unchanged** | `vm.go`, `_vm.go`, `opcode.go`, `value.go`, `table.go`, `function.go`, `alloc.go`, all standard libraries | none |
-| | `compile.go`, `ast/`, `parse/parser.go(.y)`, `parse/lexer.go` | import path only |
+| **Unchanged** | `vm.go`, `_vm.go`, `opcode.go`, `function.go`, `alloc.go`, the standard libraries (except `table.sort`) | none |
+| | `compile.go`, `parse/parser.go(.y)`, `parse/lexer.go` | import path only |
+| | `ast/expr.go` | import path, and markers for lint (`FunctionExpr.FatArrow`, `FuncCallExpr.Element`), which the compiler ignores |
 | **Hooks** (marked `go-erde`) | `auxlib.go` | `LoadFile` loads `*.erde` w/ the Erde parser, and caches compiled files (see `erde_cache.go`) |
 | | `config.go` | `./?.erde` added to the default `package.path` |
 | | `loadlib.go` | `require` also tries `.erde` for each `.lua` pattern in `package.path` (so a custom `LUA_PATH` finds Erde modules) |
 | | `linit.go` | open the `bit32` library, and preload the markup runtime |
-| | `state.go`, `_state.go` | `Options.Erde` (experimental extensions for Erde source loaded by the state) |
+| | `state.go`, `_state.go` | `Options.Erde` (experimental extensions for Erde source loaded by the state), and read-only table checks in `setField` / `setFieldString` / `SetMetatable` |
+| | `value.go`, `table.go`, `tablelib.go` | read-only tables (`LTable.readOnly`, checked by the `RawSet*` / `Append` / `Insert` / `Remove` methods and `table.sort`), see `erde_readonly.go` |
 | **New** | `parse/erde_lexer.go`, `parse/erde_parser.go` | the Erde front end (Erde -> AST) |
 | | `erde.go` | `LoadErde`, `LoadErdeString`, `DoErdeString` |
+| | `erde_readonly.go` | `LTable.Freeze` / `FreezeAll`: read-only tables, which states in different goroutines can share (ex. a host's cached data) |
 | | `parse/erde_options.go` | experimental extensions (`match`, `markup`), off by default |
 | | `parse/erde_markup.go`, `erde_markup.go`, `lib/markup.lua`, `lib/idiomorph.lua` | the `markup` experiment and its runtime (see [MARKUP.md](MARKUP.md)) |
 | | `erde_cache.go` | compiled file cache (shared bytecode, keyed by path, mtime, size, and options) |

@@ -277,13 +277,14 @@ markup.dispatch(click, {})
 markup.dispatch(click)
 markup.dispatch(dbl, { type = 'dblclick' })
 local res = markup.dispatch(click)
-local ok, err = pcall(markup.dispatch, 'nope')
-return page, res.body, res.headers['Content-Type'], dbl .. ' ' .. click, err`
+-- a stale action gets the whole page (the client is out of date)
+local stale = markup.dispatch('nope').body
+return page, res.body, res.headers['Content-Type'], dbl .. ' ' .. click, stale`
 	if err := L.DoErdeString(source); err != nil {
 		t.Fatal(err)
 	}
 
-	page, body, contentType, ids, err := L.Get(-5).String(), L.Get(-4).String(), L.Get(-3).String(), L.Get(-2).String(), L.Get(-1).String()
+	page, body, contentType, ids, stale := L.Get(-5).String(), L.Get(-4).String(), L.Get(-3).String(), L.Get(-2).String(), L.Get(-1).String()
 	// attributes render sorted, so `on:dblclick` is #1 and `onclick` is #2
 	if ids != "r:1#1 r:1#2" {
 		t.Errorf("action ids: %q", ids)
@@ -301,8 +302,8 @@ return page, res.body, res.headers['Content-Type'], dbl .. ' ' .. click, err`
 	if contentType != "text/html; charset=utf-8" {
 		t.Errorf("content type %q", contentType)
 	}
-	if err != "markup: unknown action nope" {
-		t.Errorf("got error %q", err)
+	if !strings.HasPrefix(stale, "<!DOCTYPE html>") || !strings.Contains(stale, ">3</button>") {
+		t.Errorf("stale action: expected the whole (current) page, got\n%s", stale)
 	}
 }
 

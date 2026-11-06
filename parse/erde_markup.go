@@ -424,7 +424,7 @@ func (p *erdeParser) markupElement() ast.Expr {
 		p.consume()
 		children := p.markupChildren("", line)
 		args := append([]ast.Expr{erdeLine(&ast.NilExpr{}, line), erdeLine(&ast.NilExpr{}, line)}, children...)
-		return erdeCall(p.markupFactory(line), args, line)
+		return markupCall(p.markupFactory(line), args, line)
 	}
 
 	name := p.consume()
@@ -437,7 +437,14 @@ func (p *erdeParser) markupElement() ast.Expr {
 		args = append(args, p.markupChildren(name, line)...)
 	}
 
-	return erdeCall(p.markupFactory(line), args, line)
+	return markupCall(p.markupFactory(line), args, line)
+}
+
+// markupCall is the call an element is lowered to, marked as an element.
+func markupCall(factory ast.Expr, args []ast.Expr, line int) ast.Expr {
+	call := erdeCall(factory, args, line)
+	call.Element = true
+	return call
 }
 
 // markupAttributes parses an opening tag's attributes into the props

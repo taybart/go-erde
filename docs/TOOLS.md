@@ -61,6 +61,7 @@ and `-` reads stdin.
 | `shadow` | a local (or parameter, or loop variable) that shadows another local |
 | `redefined` | a local declared twice in the same scope |
 | `unreachable` | code after `break`, `continue`, or `goto` (code after `return` is already a syntax error) |
+| `fat-arrow-component` | a `=>` function that builds markup elements but doesn't use `self`: probably a component, whose props would end up in `self` (use `->`) |
 | `syntax` | the file doesn't parse |
 
 Not reported:

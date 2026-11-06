@@ -148,6 +148,9 @@ type LTable struct {
 	strdict map[string]LValue
 	keys    []LValue
 	k2i     map[LValue]int
+
+	// go-erde: set by Freeze, see erde_readonly.go
+	readOnly bool
 }
 
 func (tb *LTable) String() string   { return fmt.Sprintf("table: %p", tb) }

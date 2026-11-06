@@ -599,6 +599,31 @@ end
 -- Root elements that can't be replaced on their own (or be in a <template>).
 local DOCUMENT_TAGS = { html = true, head = true, body = true }
 
+-- lastIndex returns where the last `needle` is in `s` (a plain search, which is
+-- much faster than a pattern anchored at the end).
+local function lastIndex(s, needle)
+  local last
+  local i = s:find(needle, 1, true)
+  while i do
+    last = i
+    i = s:find(needle, i + 1, true)
+  end
+  return last
+end
+
+-- A component's html (which has its children's html in it) is only needed to
+-- send what changed in a response, comparing renders only needs their shells.
+-- So once a response is made, its html is dropped (a page w/ a lot of nested
+-- components would otherwise keep their html many times over).
+local dispatching = false
+local function forgetHTML()
+  if lastRender then
+    for _, entry in pairs(lastRender.instances) do
+      entry.html = nil
+    end
+  end
+end
+
 -- changed returns the components that changed between two renders, as
 -- `<template data-erde-target="id">html</template>`s, or nil if the whole
 -- page has to be sent.
@@ -652,18 +677,29 @@ end
 -- element) changed. Nothing changed is an empty body.
 function M.dispatch(id, data)
   assert(mounted, 'markup: dispatch requires a mounted page (see mount)')
+  local headers = { ['Content-Type'] = 'text/html; charset=utf-8' }
   local action = actions[id]
   if not action then
-    error('markup: unknown action ' .. tostring(id), 0)
+    -- a stale action, ex. a second click on a button the first one removed:
+    -- the client is out of date, so it gets the whole page
+    return { headers = headers, body = M.document(mounted.root()) }
   end
 
   local before, sent = lastRender, sentSheets
-  action(data or {})
-  local page = M.document(mounted.root())
+  dispatching = true
+  local ok, page = pcall(function()
+    action(data or {})
+    return M.document(mounted.root())
+  end)
+  dispatching = false
+  if not ok then
+    error(page, 0)
+  end
 
   -- new styles (from `css` calls the page hasn't seen) need the whole page
   local body = before and #sheets == sent and changed(before, lastRender) or page
-  return { headers = { ['Content-Type'] = 'text/html; charset=utf-8' }, body = body }
+  forgetHTML()
+  return { headers = headers, body = body }
 end
 
 -- isInteractive returns whether the last render of a mounted page had any
@@ -692,6 +728,9 @@ function M.document(node)
   html = '<!DOCTYPE html>' .. html
   if mounted then
     sentSheets = #sheets
+    if not dispatching then
+      forgetHTML()
+    end
   end
   if not M.isInteractive() then
     return html
@@ -708,7 +747,7 @@ function M.document(node)
   elseif mounted.morph then
     script = '<script>' .. mounted.morph.inline .. '</script>' .. script
   end
-  local bodyEnd = html:find('</body>[^<]*$') or html:find('</html>[^<]*$')
+  local bodyEnd = lastIndex(html, '</body>') or lastIndex(html, '</html>')
   if bodyEnd then
     return html:sub(1, bodyEnd - 1) .. script .. html:sub(bodyEnd)
   end

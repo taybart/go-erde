@@ -745,9 +745,11 @@ func (p *erdeParser) arrowFunction() ast.Expr {
 		}
 	}
 
+	fatArrow := false
 	switch {
 	case p.branch("->"):
 	case p.branch("=>"):
+		fatArrow = true
 		parList.Names = append([]string{"self"}, parList.Names...)
 	case p.cur.Type == erdeEOF:
 		p.throwEOF("unexpected eof (expected '->' or '=>')")
@@ -774,7 +776,7 @@ func (p *erdeParser) arrowFunction() ast.Expr {
 
 	p.isVarargs = oldIsVarargs
 
-	fn := &ast.FunctionExpr{ParList: parList, Stmts: append(prelude, body...)}
+	fn := &ast.FunctionExpr{ParList: parList, Stmts: append(prelude, body...), FatArrow: fatArrow}
 	fn.SetLine(line)
 	fn.SetLastLine(lastLine)
 	return fn
