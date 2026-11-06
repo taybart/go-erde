@@ -41,7 +41,7 @@ func mainAux() int {
 	flag.StringVar(&opt_l, "l", "", "")
 	flag.StringVar(&opt_p, "p", "", "")
 	flag.StringVar(&opt_lang, "lang", "", "")
-	flag.StringVar(&opt_x, "X", "", "")
+	flag.Var((*experimentsFlag)(&opt_x), "X", "")
 	flag.IntVar(&opt_m, "mx", 0, "")
 	flag.BoolVar(&opt_i, "i", false, "")
 	flag.BoolVar(&opt_v, "v", false, "")
@@ -283,4 +283,18 @@ func loadline(rl *readline.Instance, L *lua.LState, isErde bool) (*lua.LFunction
 		}
 		chunk += "\n" + line
 	}
+}
+
+// experimentsFlag is the -X flag, which may be repeated (`-X match -X markup` is
+// the same as `-X match,markup`).
+type experimentsFlag string
+
+func (f *experimentsFlag) String() string { return string(*f) }
+
+func (f *experimentsFlag) Set(value string) error {
+	if *f != "" {
+		value = string(*f) + "," + value
+	}
+	*f = experimentsFlag(value)
+	return nil
 }

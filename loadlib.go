@@ -36,11 +36,19 @@ func loFindFile(L *LState, name, pname string) (string, string) {
 	}
 	messages := []string{}
 	for _, pattern := range strings.Split(string(path), ";") {
-		luapath := strings.Replace(pattern, "?", name, -1)
-		if _, err := os.Stat(luapath); err == nil {
-			return luapath, ""
-		} else {
-			messages = append(messages, err.Error())
+		candidates := []string{pattern}
+		// go-erde: every `.lua` pattern also finds `.erde` modules (same as the
+		// reference erde searcher), so a custom LUA_PATH still finds them
+		if pname == "path" && strings.HasSuffix(pattern, ".lua") {
+			candidates = append(candidates, strings.TrimSuffix(pattern, ".lua")+".erde")
+		}
+		for _, candidate := range candidates {
+			luapath := strings.Replace(candidate, "?", name, -1)
+			if _, err := os.Stat(luapath); err == nil {
+				return luapath, ""
+			} else {
+				messages = append(messages, err.Error())
+			}
 		}
 	}
 	return "", strings.Join(messages, "\n\t")

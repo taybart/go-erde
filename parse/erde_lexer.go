@@ -27,6 +27,9 @@ const (
 	erdeBlockString // `[==[` / `]==]` delimiter
 	erdeStringContent
 	erdeInterpolation // `{` / `}` around an interpolated expression
+	erdeMarkup        // markup syntax: `<`, `</`, `>`, `/>`, `=`, `{`, `}`
+	erdeMarkupName    // markup tag / attribute name
+	erdeMarkupText    // markup text (cleaned up, see markupText)
 )
 
 type erdeToken struct {
@@ -48,6 +51,9 @@ type erdeLexer struct {
 	line   int
 	tokens []erdeToken
 
+	// Whether to lex markup elements (see ErdeOptions.Markup).
+	markup bool
+
 	// Raw tokens (for tooling, see ErdeRawTokens), or nil when not needed.
 	raw *[]ErdeRawToken
 	// > 0 while lexing a raw token (ex. inside a string's interpolation, which
@@ -64,6 +70,7 @@ const (
 	RawSymbol
 	RawString  // whole string literal, including interpolations
 	RawComment // also a leading `#!` line
+	RawMarkup  // whole markup element (see ErdeOptions.Markup)
 )
 
 // ErdeRawToken is a token as written in the source (ex. for formatters).
@@ -117,15 +124,21 @@ func isErdeHex(c byte) bool {
 	return isErdeDigit(c) || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 }
 
-func erdeTokenize(text, source string) ([]erdeToken, error) {
-	return erdeLex(&erdeLexer{source: source, text: text, line: 1})
+func erdeTokenize(text, source string, opts ErdeOptions) ([]erdeToken, error) {
+	return erdeLex(&erdeLexer{source: source, text: text, line: 1, markup: opts.Markup})
 }
 
 // ErdeRawTokens splits Erde source into tokens as written, including
 // comments. Strings (including any interpolations) are a single token.
 func ErdeRawTokens(text, source string) ([]ErdeRawToken, error) {
+	return ErdeRawTokensWithOptions(text, source, ErdeOptions{})
+}
+
+// ErdeRawTokensWithOptions is like ErdeRawTokens, but w/ experimental
+// extensions. Markup elements are a single token.
+func ErdeRawTokensWithOptions(text, source string, opts ErdeOptions) ([]ErdeRawToken, error) {
 	raw := []ErdeRawToken{}
-	if _, err := erdeLex(&erdeLexer{source: source, text: text, line: 1, raw: &raw}); err != nil {
+	if _, err := erdeLex(&erdeLexer{source: source, text: text, line: 1, raw: &raw, markup: opts.Markup}); err != nil {
 		return nil, err
 	}
 	return raw, nil
@@ -199,6 +212,8 @@ func (lx *erdeLexer) token() {
 		lx.decimal()
 	case c == '[' && (lx.peek(1) == '[' || lx.peek(1) == '='):
 		lx.blockString()
+	case c == '<' && lx.markup && lx.markupStart():
+		lx.markupElement()
 	default:
 		for _, n := range []int{3, 2} {
 			if lx.pos+n <= len(lx.text) && erdeSymbols[lx.text[lx.pos:lx.pos+n]] {
@@ -228,6 +243,8 @@ func (lx *erdeLexer) recordRaw(start, line int) {
 		kind = RawString
 	case strings.HasPrefix(text, "--"):
 		kind = RawComment
+	case lx.markup && len(text) > 1 && text[0] == '<' && (isErdeWordHead(text[1]) || text[1] == '>'):
+		kind = RawMarkup
 	}
 
 	*lx.raw = append(*lx.raw, ErdeRawToken{Kind: kind, Text: text, Start: start, End: lx.pos, Line: line, EndLine: lx.line})

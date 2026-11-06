@@ -23,6 +23,9 @@ const (
 	RuleShadow          = "shadow"
 	RuleRedefined       = "redefined"
 	RuleUnreachable     = "unreachable"
+	// a `=>` function that builds markup elements and doesn't use self:
+	// probably a component, whose props would be `self`
+	RuleFatArrowComponent = "fat-arrow-component"
 )
 
 type Diagnostic struct {
@@ -81,6 +84,12 @@ type checker struct {
 	globalSets  map[string]bool
 	globalReads []globalRef
 	diagnostics []Diagnostic
+	// functions being checked, innermost last
+	functions []*function
+}
+
+type function struct {
+	hasElement bool
 }
 
 // Check lints a chunk. Diagnostics are sorted by line.
@@ -301,6 +310,9 @@ func (c *checker) expr(expr ast.Expr) {
 			c.expr(field.Value)
 		}
 	case *ast.FuncCallExpr:
+		if ex.Element && len(c.functions) > 0 {
+			c.functions[len(c.functions)-1].hasElement = true
+		}
 		if ex.Func != nil {
 			c.expr(ex.Func)
 		}
@@ -339,7 +351,14 @@ func (c *checker) function(fn *ast.FunctionExpr, isMethod bool) {
 	for _, name := range fn.ParList.Names {
 		c.declare(name, fn.Line(), kindParam)
 	}
+	f := &function{}
+	c.functions = append(c.functions, f)
 	c.scopedBlock(fn.Stmts)
+	c.functions = c.functions[:len(c.functions)-1]
+
+	if self := c.scopes[len(c.scopes)-1].vars["self"]; fn.FatArrow && f.hasElement && self != nil && !self.used {
+		c.report(fn.Line(), RuleFatArrowComponent, "'=>' adds 'self' as the first parameter, so a component's props would be 'self' (use '->')")
+	}
 	c.popScope()
 }
 

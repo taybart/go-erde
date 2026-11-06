@@ -12,7 +12,8 @@ The `erde` command has subcommands for working w/ Erde projects:
 All of them take files and / or directories (directories are searched for
 `*.erde` files recursively, and default to `.`), accept flags before or after
 paths, and take `-X list` to enable [experimental extensions](../README.md#experimental-extensions)
-(ex. `-X match`; needed to parse files that use them). `-h` shows a command's
+(ex. `-X match,markup`, or repeated: `-X match -X markup`; needed to parse files
+that use them). `-h` shows a command's
 usage.
 
 ## compile
@@ -60,6 +61,7 @@ and `-` reads stdin.
 | `shadow` | a local (or parameter, or loop variable) that shadows another local |
 | `redefined` | a local declared twice in the same scope |
 | `unreachable` | code after `break`, `continue`, or `goto` (code after `return` is already a syntax error) |
+| `fat-arrow-component` | a `=>` function that builds markup elements but doesn't use `self`: probably a component, whose props would end up in `self` (use `->`) |
 | `syntax` | the file doesn't parse |
 
 Not reported:

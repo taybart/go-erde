@@ -122,3 +122,23 @@ func TestErdeRequire(t *testing.T) {
 		t.Errorf("got %q, want %q", got, "hi erde")
 	}
 }
+
+// `.lua` patterns in package.path also find `.erde` modules, so a custom
+// LUA_PATH (w/o `?.erde`) still finds them.
+func TestErdeRequireLuaPattern(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "mod.erde"), []byte("return x -> x * 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	L := NewState()
+	defer L.Close()
+	L.SetField(L.GetField(L.Get(GlobalsIndex), "package"), "path", LString(filepath.Join(dir, "?.lua")))
+
+	if err := L.DoErdeString(`return require('mod')(21)`); err != nil {
+		t.Fatal(err)
+	}
+	if got := L.Get(-1).String(); got != "42" {
+		t.Errorf("got %s, want 42", got)
+	}
+}

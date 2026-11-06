@@ -350,6 +350,12 @@ func (ls *LState) CallMeta(obj LValue, event string) LValue {
 /* load and function call operations {{{ */
 
 func (ls *LState) LoadFile(path string) (*LFunction, error) {
+	// go-erde: compiled files are cached (see erde_cache.go)
+	key, proto, cacheable := ls.compiledFile(path)
+	if proto != nil {
+		return newLFunctionL(proto, ls.currentEnv(), 0), nil
+	}
+
 	var file *os.File
 	var err error
 	if len(path) == 0 {
@@ -386,11 +392,16 @@ func (ls *LState) LoadFile(path string) (*LFunction, error) {
 		}
 	}
 
+	var fn *LFunction
 	if isErdePath(path) { // go-erde
-		return ls.LoadErde(reader, path)
+		fn, err = ls.LoadErde(reader, path)
+	} else {
+		fn, err = ls.Load(reader, path)
 	}
-
-	return ls.Load(reader, path)
+	if err == nil && cacheable { // go-erde
+		storeCompiledFile(key, fn.Proto)
+	}
+	return fn, err
 }
 
 func (ls *LState) LoadString(source string) (*LFunction, error) {

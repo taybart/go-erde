@@ -53,7 +53,7 @@ func Format(source []byte, opts Options) ([]byte, error) {
 		return nil, err
 	}
 
-	raw, err := parse.ErdeRawTokens(text, "<format>")
+	raw, err := parse.ErdeRawTokensWithOptions(text, "<format>", opts.Erde)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +153,7 @@ func isValue(t *token) bool {
 		return false
 	}
 	switch t.Kind {
-	case parse.RawNumber, parse.RawString:
+	case parse.RawNumber, parse.RawString, parse.RawMarkup:
 		return true
 	case parse.RawWord:
 		return !keywords[t.Text]

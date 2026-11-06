@@ -30,6 +30,9 @@ Rules:
   shadow            a local that shadows another local
   redefined         a local declared twice in the same scope
   unreachable       code after return / break / continue / goto
+  fat-arrow-component
+                    a '=>' function that builds markup but doesn't use self
+                    (a component's props would be self, use '->')
   syntax            the file doesn't parse
 
 Add '` + lintIgnoreComment + `' in a comment to ignore a line.
@@ -42,7 +45,7 @@ func lintCommand(args []string) int {
 	var opt_g, opt_x string
 	flags := flag.NewFlagSet("lint", flag.ContinueOnError)
 	flags.StringVar(&opt_g, "g", "", "")
-	flags.StringVar(&opt_x, "X", "", "")
+	flags.Var((*experimentsFlag)(&opt_x), "X", "")
 	flags.SetOutput(io.Discard)
 	flags.Usage = func() {}
 

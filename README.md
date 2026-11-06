@@ -54,6 +54,7 @@ Scripts that use them only run on go-erde (or as `erde -c` output).
 
 ```sh
 erde -X match script.erde
+erde -X match,markup script.erde   # (or -X match -X markup)
 ```
 
 ```go
@@ -102,6 +103,26 @@ end
   assignment operator, or a call (`match(x)`) is still a name; `match (x) {` is
   a match statement.
 - Statement only (not an expression).
+
+### `markup`
+
+JSX style elements, and a runtime (`erde.markup`, preloaded) that renders them to
+HTML, w/ components, per component state, scoped styles, and interactive pages
+(w/ a host like [rest](https://github.com/taybart/rest)'s `page` handlers):
+
+```erde
+local Card = (props) -> <section class="card">
+  <h2>{props.title}</h2>
+  {props.children}
+</section>
+
+print(require('erde.markup').render(<Card title="hi"><p>hello {name}</p></Card>))
+```
+
+Elements are lowered to `h(tag, props, ...children)` calls (`h` is imported
+automatically if it isn't in scope, or `-X markup=name` uses another function), so
+the compiled output runs on any lua w/ the runtime. See
+[docs/MARKUP.md](docs/MARKUP.md).
 
 ## Go API
 

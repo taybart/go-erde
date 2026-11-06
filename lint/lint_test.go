@@ -82,3 +82,32 @@ func TestLintGlobalsOption(t *testing.T) {
 		t.Errorf("got %v, want no diagnostics", got)
 	}
 }
+
+func TestLintFatArrowComponent(t *testing.T) {
+	cases := []struct {
+		source string
+		want   []string
+	}{
+		{"return ({ item }) => <li>{item}</li>", []string{"1:fat-arrow-component"}},
+		{"return (props) => {\n  local x = <p>{props}</p>\n  return x\n}", []string{"1:fat-arrow-component"}},
+		{"return ({ item }) -> <li>{item}</li>", nil},
+		{"return () => self.x", nil},                // no markup
+		{"return () => <p>{self.name}</p>", nil},    // a method, uses self
+		{"return () => { return () -> <p/> }", nil}, // the markup is in a nested function
+	}
+	for _, c := range cases {
+		chunk, err := parse.ParseErdeWithOptions(strings.NewReader(c.source), "<string>", parse.ErdeOptions{Markup: true})
+		if err != nil {
+			t.Fatalf("%s\n%v", c.source, err)
+		}
+		var got []string
+		for _, d := range Check(chunk, Options{}) {
+			if d.Rule == RuleFatArrowComponent {
+				got = append(got, fmt.Sprintf("%d:%s", d.Line, d.Rule))
+			}
+		}
+		if fmt.Sprint(got) != fmt.Sprint(c.want) {
+			t.Errorf("%s\ngot %v, want %v", c.source, got, c.want)
+		}
+	}
+}

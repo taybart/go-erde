@@ -84,6 +84,9 @@ type erdeParser struct {
 	// Token index of the current match arm's `=>`, which ends the arm's
 	// patterns instead of starting an arrow function (-1 outside of patterns).
 	armArrowIndex int
+	// Local holding the automatic markup factory (see markupFactory), or "" if
+	// unused.
+	markupRuntime string
 
 	isVarargs           bool
 	isModuleReturnBlock bool
@@ -120,7 +123,7 @@ func ParseErdeWithOptions(reader io.Reader, name string, opts ErdeOptions) (chun
 		return nil, err
 	}
 
-	tokens, err := erdeTokenize(string(text), name)
+	tokens, err := erdeTokenize(string(text), name, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -742,9 +745,11 @@ func (p *erdeParser) arrowFunction() ast.Expr {
 		}
 	}
 
+	fatArrow := false
 	switch {
 	case p.branch("->"):
 	case p.branch("=>"):
+		fatArrow = true
 		parList.Names = append([]string{"self"}, parList.Names...)
 	case p.cur.Type == erdeEOF:
 		p.throwEOF("unexpected eof (expected '->' or '=>')")
@@ -771,7 +776,7 @@ func (p *erdeParser) arrowFunction() ast.Expr {
 
 	p.isVarargs = oldIsVarargs
 
-	fn := &ast.FunctionExpr{ParList: parList, Stmts: append(prelude, body...)}
+	fn := &ast.FunctionExpr{ParList: parList, Stmts: append(prelude, body...), FatArrow: fatArrow}
 	fn.SetLine(line)
 	fn.SetLastLine(lastLine)
 	return fn
@@ -851,6 +856,10 @@ func (p *erdeParser) terminalExpression() ast.Expr {
 		return erdeLine(&ast.NumberExpr{Value: p.consume()}, line)
 	case erdeSingleQuote, erdeDoubleQuote, erdeBlockString:
 		return p.indexChain(p.stringExpr()).expr
+	case erdeMarkup:
+		if p.cur.Value == "<" {
+			return p.markupElement()
+		}
 	}
 
 	if p.cur.Type == erdeWord || p.cur.Type == erdeSymbol {
@@ -1503,6 +1512,10 @@ func (p *erdeParser) module() []ast.Stmt {
 		moduleTable := erdeLine(&ast.TableExpr{Fields: []*ast.Field{}}, 1)
 		stmts = append([]ast.Stmt{erdeLocal([]string{erdeModuleName}, []ast.Expr{moduleTable}, 1)}, stmts...)
 		stmts = append(stmts, erdeLine(&ast.ReturnStmt{Exprs: []ast.Expr{erdeIdent(erdeModuleName, line)}}, line))
+	}
+
+	if p.markupRuntime != "" {
+		stmts = append([]ast.Stmt{p.markupRuntimeImport()}, stmts...)
 	}
 
 	return stmts
