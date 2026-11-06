@@ -42,7 +42,7 @@ func lintCommand(args []string) int {
 	var opt_g, opt_x string
 	flags := flag.NewFlagSet("lint", flag.ContinueOnError)
 	flags.StringVar(&opt_g, "g", "", "")
-	flags.StringVar(&opt_x, "X", "", "")
+	flags.Var((*experimentsFlag)(&opt_x), "X", "")
 	flags.SetOutput(io.Discard)
 	flags.Usage = func() {}
 

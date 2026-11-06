@@ -27,6 +27,9 @@ const (
 	erdeBlockString // `[==[` / `]==]` delimiter
 	erdeStringContent
 	erdeInterpolation // `{` / `}` around an interpolated expression
+	erdeJsx           // jsx syntax: `<`, `</`, `>`, `/>`, `=`, `{`, `}`
+	erdeJsxName       // jsx tag / attribute name
+	erdeJsxText       // jsx text (cleaned up, see jsxText)
 )
 
 type erdeToken struct {
@@ -48,6 +51,9 @@ type erdeLexer struct {
 	line   int
 	tokens []erdeToken
 
+	// Whether to lex jsx elements (see ErdeOptions.JSX).
+	jsx bool
+
 	// Raw tokens (for tooling, see ErdeRawTokens), or nil when not needed.
 	raw *[]ErdeRawToken
 	// > 0 while lexing a raw token (ex. inside a string's interpolation, which
@@ -64,6 +70,7 @@ const (
 	RawSymbol
 	RawString  // whole string literal, including interpolations
 	RawComment // also a leading `#!` line
+	RawJSX     // whole jsx element (see ErdeOptions.JSX)
 )
 
 // ErdeRawToken is a token as written in the source (ex. for formatters).
@@ -117,15 +124,21 @@ func isErdeHex(c byte) bool {
 	return isErdeDigit(c) || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 }
 
-func erdeTokenize(text, source string) ([]erdeToken, error) {
-	return erdeLex(&erdeLexer{source: source, text: text, line: 1})
+func erdeTokenize(text, source string, opts ErdeOptions) ([]erdeToken, error) {
+	return erdeLex(&erdeLexer{source: source, text: text, line: 1, jsx: opts.JSX})
 }
 
 // ErdeRawTokens splits Erde source into tokens as written, including
 // comments. Strings (including any interpolations) are a single token.
 func ErdeRawTokens(text, source string) ([]ErdeRawToken, error) {
+	return ErdeRawTokensWithOptions(text, source, ErdeOptions{})
+}
+
+// ErdeRawTokensWithOptions is like ErdeRawTokens, but w/ experimental
+// extensions. Jsx elements are a single token.
+func ErdeRawTokensWithOptions(text, source string, opts ErdeOptions) ([]ErdeRawToken, error) {
 	raw := []ErdeRawToken{}
-	if _, err := erdeLex(&erdeLexer{source: source, text: text, line: 1, raw: &raw}); err != nil {
+	if _, err := erdeLex(&erdeLexer{source: source, text: text, line: 1, raw: &raw, jsx: opts.JSX}); err != nil {
 		return nil, err
 	}
 	return raw, nil
@@ -199,6 +212,8 @@ func (lx *erdeLexer) token() {
 		lx.decimal()
 	case c == '[' && (lx.peek(1) == '[' || lx.peek(1) == '='):
 		lx.blockString()
+	case c == '<' && lx.jsx && lx.jsxStart():
+		lx.jsxElement()
 	default:
 		for _, n := range []int{3, 2} {
 			if lx.pos+n <= len(lx.text) && erdeSymbols[lx.text[lx.pos:lx.pos+n]] {
@@ -228,6 +243,8 @@ func (lx *erdeLexer) recordRaw(start, line int) {
 		kind = RawString
 	case strings.HasPrefix(text, "--"):
 		kind = RawComment
+	case lx.jsx && len(text) > 1 && text[0] == '<' && (isErdeWordHead(text[1]) || text[1] == '>'):
+		kind = RawJSX
 	}
 
 	*lx.raw = append(*lx.raw, ErdeRawToken{Kind: kind, Text: text, Start: start, End: lx.pos, Line: line, EndLine: lx.line})

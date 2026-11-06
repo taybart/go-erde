@@ -35,7 +35,7 @@ func compileCommand(args []string) int {
 	var opt_f, opt_p bool
 	flags := flag.NewFlagSet("compile", flag.ContinueOnError)
 	flags.StringVar(&opt_o, "o", "", "")
-	flags.StringVar(&opt_x, "X", "", "")
+	flags.Var((*experimentsFlag)(&opt_x), "X", "")
 	flags.BoolVar(&opt_f, "f", false, "")
 	flags.BoolVar(&opt_p, "p", false, "")
 	flags.SetOutput(io.Discard)

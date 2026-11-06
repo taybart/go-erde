@@ -26,7 +26,7 @@ func fmtCommand(args []string) int {
 	var opt_x string
 	var opt_check bool
 	flags := flag.NewFlagSet("fmt", flag.ContinueOnError)
-	flags.StringVar(&opt_x, "X", "", "")
+	flags.Var((*experimentsFlag)(&opt_x), "X", "")
 	flags.BoolVar(&opt_check, "check", false, "")
 	flags.SetOutput(io.Discard)
 	flags.Usage = func() {}

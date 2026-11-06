@@ -84,6 +84,9 @@ type erdeParser struct {
 	// Token index of the current match arm's `=>`, which ends the arm's
 	// patterns instead of starting an arrow function (-1 outside of patterns).
 	armArrowIndex int
+	// Local holding the automatic jsx factory (see jsxFactory), or "" if
+	// unused.
+	jsxRuntime string
 
 	isVarargs           bool
 	isModuleReturnBlock bool
@@ -120,7 +123,7 @@ func ParseErdeWithOptions(reader io.Reader, name string, opts ErdeOptions) (chun
 		return nil, err
 	}
 
-	tokens, err := erdeTokenize(string(text), name)
+	tokens, err := erdeTokenize(string(text), name, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -851,6 +854,10 @@ func (p *erdeParser) terminalExpression() ast.Expr {
 		return erdeLine(&ast.NumberExpr{Value: p.consume()}, line)
 	case erdeSingleQuote, erdeDoubleQuote, erdeBlockString:
 		return p.indexChain(p.stringExpr()).expr
+	case erdeJsx:
+		if p.cur.Value == "<" {
+			return p.jsxElement()
+		}
 	}
 
 	if p.cur.Type == erdeWord || p.cur.Type == erdeSymbol {
@@ -1503,6 +1510,10 @@ func (p *erdeParser) module() []ast.Stmt {
 		moduleTable := erdeLine(&ast.TableExpr{Fields: []*ast.Field{}}, 1)
 		stmts = append([]ast.Stmt{erdeLocal([]string{erdeModuleName}, []ast.Expr{moduleTable}, 1)}, stmts...)
 		stmts = append(stmts, erdeLine(&ast.ReturnStmt{Exprs: []ast.Expr{erdeIdent(erdeModuleName, line)}}, line))
+	}
+
+	if p.jsxRuntime != "" {
+		stmts = append([]ast.Stmt{p.jsxRuntimeImport()}, stmts...)
 	}
 
 	return stmts

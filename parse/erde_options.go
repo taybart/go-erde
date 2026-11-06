@@ -25,10 +25,25 @@ type ErdeOptions struct {
 	// `match` is a contextual keyword, so it is still usable as a name (ex.
 	// `s:match(p)`, `local match = 1`, `match(x)`).
 	Match bool
+
+	// JSX enables JSX style elements, which are lowered to calls of
+	// JSXFactory (see erde_jsx.go):
+	//
+	//	local page = <Layout title="home">
+	//	  <p class="greeting">hello {name}!</p>
+	//	</Layout>
+	//
+	// The runtime library `erde.jsx` provides a factory (`h`) that renders to
+	// HTML strings.
+	JSX bool
+	// JSXFactory is the (possibly dotted) name of the function elements are
+	// lowered to. By default, it's `h` if declared, otherwise the runtime
+	// library's `h` (imported automatically).
+	JSXFactory string
 }
 
 // ErdeExperiments lists the experiment names accepted by Enable.
-var ErdeExperiments = []string{"match"}
+var ErdeExperiments = []string{"match", "jsx"}
 
 // Enable turns on experiments by name, given as a comma separated list (ex.
 // from a command line flag).
@@ -38,6 +53,8 @@ func (o *ErdeOptions) Enable(names string) error {
 		case "":
 		case "match":
 			o.Match = true
+		case "jsx":
+			o.JSX = true
 		default:
 			return fmt.Errorf("unknown erde experiment '%s' (available: %s)", name, strings.Join(ErdeExperiments, ", "))
 		}
