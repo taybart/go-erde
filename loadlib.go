@@ -34,7 +34,7 @@ func loFindFile(L *LState, name, pname string) (string, string) {
 	if !ok {
 		L.RaiseError("package.%s must be a string", pname)
 	}
-	messages := []string{}
+	var errs []error // (only made into messages if nothing's found)
 	for _, pattern := range strings.Split(string(path), ";") {
 		candidates := []string{pattern}
 		// go-erde: every `.lua` pattern also finds `.erde` modules (same as the
@@ -44,12 +44,16 @@ func loFindFile(L *LState, name, pname string) (string, string) {
 		}
 		for _, candidate := range candidates {
 			luapath := strings.Replace(candidate, "?", name, -1)
-			if _, err := os.Stat(luapath); err == nil {
+			if _, err := statFile(luapath); err == nil {
 				return luapath, ""
 			} else {
-				messages = append(messages, err.Error())
+				errs = append(errs, err)
 			}
 		}
+	}
+	messages := make([]string, len(errs))
+	for i, err := range errs {
+		messages[i] = err.Error()
 	}
 	return "", strings.Join(messages, "\n\t")
 }

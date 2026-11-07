@@ -8,7 +8,6 @@ package lua
 // changed file has a new modification time / size, so it's compiled again.
 
 import (
-	"os"
 	"sync"
 
 	"github.com/taybart/go-erde/parse"
@@ -39,7 +38,7 @@ func (ls *LState) compiledFile(path string) (key compiledFileKey, proto *Functio
 	if !CacheCompiledFiles || path == "" {
 		return key, nil, false
 	}
-	info, err := os.Stat(path)
+	info, err := statFile(path)
 	if err != nil || !info.Mode().IsRegular() {
 		return key, nil, false
 	}
