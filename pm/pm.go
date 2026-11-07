@@ -613,6 +613,10 @@ redo:
 
 /* API {{{ */
 
+// Find returns the matches of the Lua pattern p in src (from offset, at
+// most limit of them, -1 for all). Compiled patterns are cached, and run as a
+// plain byte search (literal patterns) or w/ Go's regexp when that matches
+// exactly like the pattern VM (see fast.go), else w/ the VM.
 func Find(p string, src []byte, offset, limit int) (matches []*MatchData, err error) {
 	defer func() {
 		if v := recover(); v != nil {
@@ -623,11 +627,21 @@ func Find(p string, src []byte, offset, limit int) (matches []*MatchData, err er
 			}
 		}
 	}()
-	pat := parsePattern(newScanner([]byte(p)), true)
-	insts := compilePattern(pat)
-	matches = []*MatchData{}
+	prog := getProgram(p)
+	switch {
+	case prog.lit != nil:
+		return prog.findLiteral(src, offset, limit), nil
+	case prog.re != nil && !(prog.wide && hasHighByte(src, offset)):
+		return prog.findRegexp(src, offset, limit), nil
+	}
+	return prog.findVM(src, offset, limit), nil
+}
+
+// findVM runs the pattern VM at each position from offset.
+func (prog *program) findVM(src []byte, offset, limit int) []*MatchData {
+	matches := []*MatchData{}
 	for sp := offset; sp <= len(src); {
-		ok, nsp, ms := recursiveVM(src, insts, 0, sp, 0)
+		ok, nsp, ms := recursiveVM(src, prog.insts, 0, sp, 0)
 		sp++
 		if ok {
 			if sp < nsp {
@@ -635,11 +649,11 @@ func Find(p string, src []byte, offset, limit int) (matches []*MatchData, err er
 			}
 			matches = append(matches, ms)
 		}
-		if len(matches) == limit || pat.MustHead {
+		if len(matches) == limit || prog.pat.MustHead {
 			break
 		}
 	}
-	return
+	return matches
 }
 
 /* }}} */

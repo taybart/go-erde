@@ -200,28 +200,34 @@ func capturedString(L *LState, m *pm.MatchData, str string, idx int) string {
 
 }
 
+// strGsubDoReplace builds str w/ each (in order, non-overlapping) match
+// replaced.
 func strGsubDoReplace(str string, info []replaceInfo) string {
-	offset := 0
-	buf := []byte(str)
+	n := len(str)
 	for _, replace := range info {
-		oldlen := len(buf)
-		b1 := append([]byte(""), buf[0:offset+replace.Indicies[0]]...)
-		b2 := []byte("")
-		index2 := offset + replace.Indicies[1]
-		if index2 <= len(buf) {
-			b2 = append(b2, buf[index2:len(buf)]...)
-		}
-		buf = append(b1, replace.String...)
-		buf = append(buf, b2...)
-		offset += len(buf) - oldlen
+		n += len(replace.String) - (replace.Indicies[1] - replace.Indicies[0])
 	}
-	return string(buf)
+	var b strings.Builder
+	b.Grow(n)
+	last := 0
+	for _, replace := range info {
+		b.WriteString(str[last:replace.Indicies[0]])
+		b.WriteString(replace.String)
+		last = replace.Indicies[1]
+	}
+	b.WriteString(str[last:])
+	return b.String()
 }
 
 func strGsubStr(L *LState, str string, repl string, matches []*pm.MatchData) string {
 	infoList := make([]replaceInfo, 0, len(matches))
+	plain := !strings.Contains(repl, "%")
 	for _, match := range matches {
 		start, end := match.Capture(0), match.Capture(1)
+		if plain {
+			infoList = append(infoList, replaceInfo{[]int{start, end}, repl})
+			continue
+		}
 		sc := newFlagScanner('%', "", "", repl)
 		for c, eos := sc.Next(); !eos; c, eos = sc.Next() {
 			if !sc.ChangeFlag {
